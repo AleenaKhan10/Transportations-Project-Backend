@@ -86,25 +86,14 @@ class DitatAPI:
         if 'headers' in kwargs:
             headers.update(kwargs.pop('headers'))
         
-        try:
-            response = requests.request(method, url, headers=headers, **kwargs)
-            
-            if response.status_code not in [200, 201]:
-                error_msg = f"API request failed: {response.status_code} - {response.text}"
-                logger.error(f"Error calling {method} {url}: {error_msg}")
-                raise DitatAPIException(error_msg)
-            
-            return response.json()
-            
-        except requests.RequestException as e:
-            error_msg = f"Request failed: {str(e)}"
-            logger.error(f"Network error calling {method} {url}: {error_msg}")
+        response = requests.request(method, url, headers=headers, **kwargs)
+        
+        if response.status_code not in [200, 201]:
+            error_msg = f"API request failed: {response.status_code} - {response.text}"
+            logger.error(f"Error calling {method} {url}: {error_msg}")
             raise DitatAPIException(error_msg)
-        except ValueError as e:
-            # Handle JSON decode errors
-            error_msg = f"Failed to decode JSON response: {str(e)}"
-            logger.error(f"JSON error from {method} {url}: {error_msg}")
-            raise DitatAPIException(error_msg)
+        
+        return response.json()
 
     def authenticate(self) -> str:
         """
