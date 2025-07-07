@@ -30,8 +30,10 @@ USING
       temp_updated_on,
       trip_start_time,
       trip_end_time,
-      sub_trip_start_time,
-      sub_trip_end_time
+      leg_start_time,
+      leg_end_time,
+      sub_leg_start_time,
+      sub_leg_end_time
     FROM
       `agy-intelligence-hub.golden.ditat_sub-trip_level_time_and_temp`
       -- Process data from the last 2 hours to catch any new or delayed records.
@@ -71,8 +73,10 @@ USING
     temp_updated_on AS ditat_temp_time,
     trip_start_time,
     trip_end_time,
-    sub_trip_start_time,
-    sub_trip_end_time
+    leg_start_time,
+    leg_end_time,
+    sub_leg_start_time,
+    sub_leg_end_time
   FROM
     closest_samsara_readings
   WHERE
