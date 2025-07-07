@@ -1,0 +1,10 @@
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from providers.samsara_provider import ingest_samsara_data
+
+router = APIRouter()
+
+@router.post("/ingest-samsara")
+async def ingest_samsara():
+    result = ingest_samsara_data()
+    return JSONResponse(content=result) 
