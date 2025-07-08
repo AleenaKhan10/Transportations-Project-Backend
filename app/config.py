@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
+    # Slack Bot settings
+    SLACK_BOT_TOKEN: str
+    SLACK_CHANNEL: str
+
     class Config:
         env_file = ".env"
 

@@ -3,6 +3,7 @@ from api.trailer_trip_data import router as trip_router
 from api.samsara_data import router as samsara_router
 from api.ditat_data import router as ditat_router
 from auth.router import router as auth_router
+from api.slack_temp_data import router as slack_temp
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -17,6 +18,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(trip_router)
 app.include_router(samsara_router)
 app.include_router(ditat_router)
+app.include_router(slack_temp)
 
 if __name__ == "__main__":
     import uvicorn
