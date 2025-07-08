@@ -1,9 +1,9 @@
 import datetime
 from helpers.utils import dump_json
 from helpers.samsara import SamsaraAPI
-from config import Config
+from config import settings
 
-samsara_api = SamsaraAPI(Config.SAMSARA_TOKEN)
+samsara_api = SamsaraAPI(settings.SAMSARA_TOKEN)
 
 def ingest_samsara_data():
     sensors_df = samsara_api.get_all_sensors()

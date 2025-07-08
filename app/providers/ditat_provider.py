@@ -1,9 +1,9 @@
 import datetime
 from helpers.utils import dump_json
 from helpers.ditat import DitatAPI
-from config import Config
+from config import settings
 
-ditat_api = DitatAPI(Config.DITAT_TOKEN)
+ditat_api = DitatAPI(settings.DITAT_TOKEN)
 
 def ingest_ditat_data():
     df = ditat_api.get_dispatch_board()

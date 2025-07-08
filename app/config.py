@@ -1,9 +1,22 @@
-from dotenv import load_dotenv
-import os
+from pydantic_settings import BaseSettings
 
-load_dotenv()
+class Settings(BaseSettings):
+    DITAT_TOKEN: str
+    SAMSARA_TOKEN: str
+    DUMMY_TOKEN: str
 
-class Config:
-    DITAT_TOKEN = os.getenv("DITAT_TOKEN")
-    SAMSARA_TOKEN = os.getenv("SAMSARA_TOKEN")
-    DUMMY_TOKEN = os.getenv("DUMMY_TOKEN")
+    # Database settings
+    DB_USER: str
+    DB_PASSWORD: str
+    DB_HOST: str
+    DB_NAME: str
+
+    # JWT settings
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    class Config:
+        env_file = ".env"
+
+settings = Settings()
