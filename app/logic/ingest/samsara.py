@@ -1,11 +1,17 @@
 import datetime
-from helpers.utils import dump_json
-from helpers.samsara import SamsaraAPI
+
+import pandas as pd
 from config import settings
+from helpers.utils import dump_json
+from providers.samsara import SamsaraAPI
+
+
+TAG_IDS = [107382]
 
 samsara_api = SamsaraAPI(settings.SAMSARA_TOKEN)
 
-def ingest_samsara_data():
+
+def ingest_trailer_temp_data():
     sensors_df = samsara_api.get_all_sensors()
     sensor_ids = sensors_df["id"].tolist()
     temperatures_df = samsara_api.get_temperatures_batched(sensor_ids)
@@ -50,4 +56,34 @@ def ingest_samsara_data():
         project_id="agy-intelligence-hub",
         if_exists="append",
     )
-    return {"status": "success"} 
+    return {"status": "success"}
+
+
+def ingest_trailer_stats_data():
+    types = ["reeferRunMode", "reeferSetPointTemperatureMilliCZone1"]
+    stats_df = samsara_api.get_all_stats(tag_ids=[107382], types=types)
+    flattened_dfs = []
+    cols_to_check_nan = []
+    
+    cols_to_flatten = types
+    for col in cols_to_flatten:
+        # Normalize the column
+        flattened = pd.json_normalize(stats_df[col])
+        # Add a prefix to the new columns
+        flattened.columns = [f"{col}{sub_col.title()}" for sub_col in flattened.columns]
+        cols_to_check_nan.extend(flattened.columns)
+        flattened_dfs.append(flattened)
+
+    # Concatenate the original DataFrame (without the nested columns) with the new flattened DataFrames
+    stats_df = (
+        pd.concat([stats_df.drop(columns=cols_to_flatten)] + flattened_dfs, axis=1)
+        .dropna(subset=cols_to_check_nan)
+        .reset_index(drop=True)
+    )
+    stats_df["ingestedAt"] = datetime.datetime.now(tz=datetime.timezone.utc)
+    stats_df.to_gbq(
+        destination_table="bronze.samsara_trailer_stats",
+        project_id="agy-intelligence-hub",
+        if_exists="append",
+    )
+    return {"status": "success"}

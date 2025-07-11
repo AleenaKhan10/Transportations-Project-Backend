@@ -1,18 +1,20 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from db.models import User, UserCreate
-from auth.service import create_user as create_user_service, authenticate_user
-from auth.security import create_access_token
-from config import settings
 
-router = APIRouter()
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from config import settings
+from db.models import User, UserCreate
+from logic.auth import create_user as create_user_service, authenticate_user, create_access_token
+
+
+router = APIRouter(prefix=settings.AUTH_ROUTER_PREFIX)
 
 @router.post("/users", response_model=User)
 def create_user(user: UserCreate):
     return create_user_service(user)
 
-@router.post("/login")
+@router.post(settings.TOKEN_ENDPOINT)
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     user = authenticate_user(User(username=form_data.username, password=form_data.password))
     if not user:

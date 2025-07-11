@@ -21,6 +21,7 @@ common_fields = """
   truck_id, 
   status, 
   priority_id, 
+  priority, 
   max_allowed_deviation, 
   required_temp, 
   driver_set_temp, 
@@ -82,39 +83,32 @@ ORDER BY samsara_temp_time DESC
 """
 
 
+common_template = (
+    "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    "> *Required Temp:* `{required_temp}`\n"
+    "> *Driver Set:* `{driver_set_temp}`\n"
+    "> *Samsara Temp:* `{samsara_temp}`\n"
+    "> *Captured At* `{samsara_temp_time}`"
+)
+
 
 cfgs = [
     {
         "title": "⚠️ Driver Setpoint Mismatch",
         "query": query_setpoint,
-        "template": (
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            "> *Required Temp:* `{required_temp}`\n"
-            "> *Driver Set:* `{driver_set_temp}`\n"
-            "> *Samsara Temp:* `{samsara_temp}`\n"
-            "> *Captured At* `{samsara_temp_time}`"
-        )
+        "template": common_template,
     },
     {
         "title": "🔥 99°F Required Temp",
         "query": query_99,
-        "template": (
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            "> *Required Temp:* `{required_temp}`\n"
-            "> *Driver Set:* `{driver_set_temp}`\n"
-            "> *Samsara Temp:* `{samsara_temp}`\n"
-            "> *Captured At* `{samsara_temp_time}`"
-        )
+        "template": common_template,
     },
     {
         "title": "🚨 Temperature Out of Range",
         "query": query_anomalies,
         "template": (
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            "> *Required Temp:* `{required_temp}`\n"
-            "> *Driver Set:* `{driver_set_temp}`\n"
-            "> *Samsara Temp:* `{samsara_temp}`\n"
-            "> *Captured At* `{samsara_temp_time}`\n"
+            f"{common_template}\n"
+            "> *Severity:* `{priority_id} ({priority})`\n"
             "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
         )
     },
@@ -134,6 +128,7 @@ def send_slack_temp_alerts():
             df['samsara_temp_time'] = df['samsara_temp_time'].dt.tz_localize(chicago_tz).dt.strftime(dt_format_str)
             
             blocks.append({"type": "header", "text": {"type": "plain_text", "text": cfg["title"], "emoji": True}})
+            blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {df.shape[0]}"}]})
             for _, row in df.iterrows():
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": cfg["template"].format(**row)}})
             blocks.append({"type": "divider"})

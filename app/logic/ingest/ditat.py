@@ -1,7 +1,7 @@
 import datetime
-from helpers.utils import dump_json
-from helpers.ditat import DitatAPI
 from config import settings
+from helpers.utils import dump_json
+from providers.ditat import DitatAPI
 
 ditat_api = DitatAPI(settings.DITAT_TOKEN)
 

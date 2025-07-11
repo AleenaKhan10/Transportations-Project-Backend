@@ -205,3 +205,99 @@ class SamsaraAPI:
         
         return pd.concat(all_trailers, ignore_index=True) if all_trailers else pd.DataFrame()
 
+    def get_stats(
+        self,
+        tag_ids: Optional[List[int]] = None,
+        types: Optional[List[str]] = [
+            "reeferRunMode",
+            "reeferSetPointTemperatureMilliCZone1",
+        ],
+        after: Optional[Union[str, UUID]] = None,
+        json_normalize: bool = False,
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Fetches trailer statistics from the Samsara API and returns them as a DataFrame.
+
+        Args:
+            tag_ids: Optional list of tag IDs to filter the statistics.
+            types: Optional list of types of statistics to fetch.
+            after: Optional cursor for pagination.
+            json_normalize: Whether to normalize the JSON data.
+
+        Returns:
+            tuple: (DataFrame of trailer statistics, pagination dictionary)
+
+        Raises:
+            SamsaraAPIException: If no data is found in the response.
+        
+        Reference:
+            https://developers.samsara.com/reference/gettrailerstatsfeed
+        """
+        params = {}
+        if after:
+            params["after"] = str(after)
+        if types:
+            params["types"] = ",".join(types)
+        if tag_ids:
+            params["tagIds"] = ",".join(map(str, tag_ids))
+
+        data = self._make_request("GET", "/beta/fleet/trailers/stats/feed", params=params)
+        if "data" not in data:
+            raise SamsaraAPIException(
+                f"No trailers found in the response. Response: {data}"
+            )
+
+        df = (
+            pd.json_normalize(data["data"])
+            if json_normalize
+            else pd.DataFrame(data["data"])
+        )
+        
+        # Explode the "types" columns if they are in `list` format
+        try:
+            df = df.explode(types)
+        except Exception:
+            pass
+        
+        return df, data.get("pagination", {})
+
+    def get_all_stats(
+        self,
+        tag_ids: Optional[List[int]] = None,
+        types: Optional[List[str]] = [
+            "reeferRunMode",
+            "reeferSetPointTemperatureMilliCZone1",
+        ],
+        json_normalize: bool = False,
+    ):
+        """
+        Fetches all trailer statistics from the Samsara API, handling pagination automatically.
+
+        Args:
+            tag_ids: Optional list of tag IDs to filter trailers
+            types: Optional list of types of statistics to fetch
+            json_normalize: Whether to normalize the JSON data
+
+        Returns:
+            pd.DataFrame: DataFrame containing all trailer statistics
+        
+        Reference:
+            https://developers.samsara.com/reference/gettrailerstatsfeed
+        """
+        all_stats = []
+        after = None
+
+        while True:
+            df, pagination = self.get_stats(
+                tag_ids=tag_ids, types=types, after=after, json_normalize=json_normalize
+            )
+
+            if not df.empty:
+                all_stats.append(df)
+
+            if not pagination.get("hasNextPage"):
+                break
+
+            after = pagination.get("endCursor")
+
+        return pd.concat(all_stats, ignore_index=True) if all_stats else pd.DataFrame()

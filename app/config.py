@@ -10,6 +10,11 @@ class Settings(BaseSettings):
     DB_PASSWORD: str
     DB_HOST: str
     DB_NAME: str
+    
+    # Auth settings
+    AUTH_ROUTER_PREFIX: str = "/auth"
+    TOKEN_ENDPOINT: str = "/login"
+    TOKEN_ENDPOINT_PATH: str = f"{AUTH_ROUTER_PREFIX}{TOKEN_ENDPOINT}"
 
     # JWT settings
     SECRET_KEY: str

@@ -1,9 +1,5 @@
 from fastapi import FastAPI
-from api.trailer_trip_data import router as trip_router
-from api.samsara_data import router as samsara_router
-from api.ditat_data import router as ditat_router
-from auth.router import router as auth_router
-from api.slack_temp_data import router as slack_temp
+from services import auth_router, trip_router, ingest_router, alert_router
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -14,11 +10,10 @@ app = FastAPI()
 
 app.add_event_handler("startup", create_db_and_tables)
 
-app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(trip_router)
-app.include_router(samsara_router)
-app.include_router(ditat_router)
-app.include_router(slack_temp)
+app.include_router(auth_router, tags=["auth"])
+app.include_router(trip_router, tags=["trips"])
+app.include_router(ingest_router, tags=["ingest"])
+app.include_router(alert_router, tags=["alerts"])
 
 if __name__ == "__main__":
     import uvicorn

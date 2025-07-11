@@ -1,14 +1,18 @@
-from datetime import datetime, timedelta
 from typing import Optional
-from fastapi import Depends, HTTPException, status, Header
-from fastapi.security import OAuth2PasswordBearer
+from datetime import datetime, timedelta
+
 from jose import JWTError, jwt
 from sqlmodel import Session, select
-from config import settings
+from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, status, Header
+
 from db.models import User
+from config import settings
 from db.database import engine
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl=settings.TOKEN_ENDPOINT_PATH)
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -19,6 +23,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
+
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
@@ -40,7 +45,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             raise credentials_exception
         return user
 
-def verify_ingestion_token(x_api_key: str = Header(..., description="Your secret API token.")):
+def verify_static_token(x_api_key: str = Header(..., description="Your secret API token.")):
     """
     Dependency to verify the secret token in the X-Auth-Token header for ingestion services.
     """
