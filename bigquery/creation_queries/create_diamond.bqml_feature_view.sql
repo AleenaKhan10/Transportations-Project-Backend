@@ -1,6 +1,6 @@
 -- BQML Feature View
 -- This view prepares all the necessary features for the BQML model.
-CREATE OR REPLACE VIEW `agy-intelligence-hub.golden.bqml_feature_view` AS
+CREATE OR REPLACE VIEW `agy-intelligence-hub.diamond.bqml_feature_view` AS
 WITH feature_engineered_data AS (
   SELECT
     -- ===== Key Identifiers and Timestamps =====

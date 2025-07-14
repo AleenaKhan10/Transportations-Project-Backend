@@ -1,20 +1,21 @@
--- For now we're scheduling this query to run every 15 minutes. 
+-- For now we're scheduling this query to run every 5 minutes. 
 -- Later on, we may want to schedule it more or less frequently.
 -- It efficiently updates the master table 
 --   * with only the latest data 
 --   * from the Ditat and Samsara sources 
---   * for the last 2 hours.
+--   * for the last 30 mins.
 MERGE
   `agy-intelligence-hub.golden.ditat_samsara_merged_master` AS T
 USING
   (
-    -- The source query now only looks at recent data (e.g., last 2 hours)
+    -- The source query now only looks at recent data (e.g., last 30 mins)
     -- to find new records and update existing ones.
   WITH
     recent_trips AS (
     SELECT
       trailer_id,
       trip_id,
+      leg_id,
       driver_id,
       truck_id,
       status_id,
@@ -35,10 +36,10 @@ USING
       sub_leg_start_time,
       sub_leg_end_time
     FROM
-      `agy-intelligence-hub.golden.ditat_sub-trip_level_time_and_temp`
-      -- Process data from the last 2 hours to catch any new or delayed records.
+      `agy-intelligence-hub.golden.ditat_grouped_subtrip_level`
+      -- Process data from the last 30 mins to catch any new or delayed records.
     WHERE
-      temp_updated_on >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 HOUR) ),
+      temp_updated_on >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE) ),
     closest_samsara_readings AS (
     SELECT
       d.*,
@@ -56,6 +57,7 @@ USING
   SELECT
     trailer_id,
     trip_id,
+    leg_id,
     driver_id,
     truck_id,
     status_id,

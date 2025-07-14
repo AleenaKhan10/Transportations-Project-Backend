@@ -1,3 +1,4 @@
+CREATE OR REPLACE VIEW `agy-intelligence-hub.golden.ditat_grouped_subtrip_level` AS
 WITH ditat_by_trip AS (
   SELECT
     DISTINCT
@@ -50,8 +51,10 @@ WITH ditat_by_trip AS (
     d.statusMessage AS status,
     d.priorityMessage AS priority,
     d.priority AS priority_id,
-    d.reeferMode AS reefer_mode_id,
-    d.reeferModeMessage AS reefer_mode,
+    d.actualReeferMode AS reefer_mode_id,
+    d.actualReeferModeMessage AS reefer_mode,
+    d.reeferMode AS required_reefer_mode_id,
+    d.reeferModeMessage AS required_reefer_mode,
     d.MaxTempDeviationAllowedInF AS max_allowed_deviation,
     d.reeferTemperatureInF AS required_temp,
     d.actualReeferSetTemperatureInF AS driver_set_temp,

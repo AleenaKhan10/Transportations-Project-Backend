@@ -1,5 +1,5 @@
-CREATE VIEW `agy-intelligence-hub.silver.samsara_cleaned_view`
-AS SELECT
+CREATE OR REPLACE VIEW `agy-intelligence-hub.silver.samsara_cleaned_view` AS 
+SELECT
   sensorId,
   sensorName,
   ambientTemperature, # This is in milli-degrees centigrade
@@ -17,4 +17,3 @@ AS SELECT
   ingestedAt,
   trailerSerialNumber
 FROM `agy-intelligence-hub.bronze.samsara_full`
-;

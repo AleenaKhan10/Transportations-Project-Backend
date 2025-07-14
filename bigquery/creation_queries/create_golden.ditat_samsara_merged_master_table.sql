@@ -6,6 +6,7 @@ WITH
   SELECT
     trailer_id,
     trip_id,
+    leg_id,
     driver_id,
     truck_id,
     status_id,
@@ -14,6 +15,8 @@ WITH
     priority,
     reefer_mode_id,
     reefer_mode,
+    required_reefer_mode_id,
+    required_reefer_mode,
     max_allowed_deviation,
     required_temp,
     driver_set_temp,
@@ -26,7 +29,7 @@ WITH
     sub_leg_start_time,
     sub_leg_end_time
   FROM
-    `agy-intelligence-hub.golden.ditat_sub-trip_level_time_and_temp`
+    `agy-intelligence-hub.golden.ditat_grouped_subtrip_level`
     ),
   closest_samsara_readings AS (
     -- Find the closest Samsara reading for each Ditat temperature record
@@ -48,6 +51,7 @@ SELECT
   -- Select all the final columns for your master table
   trailer_id,
   trip_id,
+  leg_id,
   driver_id,
   truck_id,
   status_id,

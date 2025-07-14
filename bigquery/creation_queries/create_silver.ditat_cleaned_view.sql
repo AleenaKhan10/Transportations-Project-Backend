@@ -1,6 +1,7 @@
-CREATE OR REPLACE VIEW `agy-intelligence-hub.silver.ditat_cleaned_view`
-AS select 
-  tripId,
+CREATE OR REPLACE VIEW `agy-intelligence-hub.silver.ditat_cleaned_view` AS
+select 
+  CONCAT(SPLIT(tripId, "-")[0], "-", SPLIT(tripId, "-")[1]) AS tripId,
+  CAST(SPLIT(tripId, "-")[2] AS INT) AS legId,
   primaryDriverId,
   truckId,
   REGEXP_REPLACE(UPPER(primaryTrailerId), "[^A-Z0-9]+", "") AS primaryTrailerId,
@@ -41,6 +42,12 @@ AS select
     ELSE 9 -- Catch any other status values not explicitly handled
   END AS internalOrderedStatus,
   actualReeferMode,
+  CASE
+    WHEN actualReeferMode = 0 THEN "Off"
+    WHEN actualReeferMode = 1 THEN "Stop&Run" -- Stopped & Will Turn On if absoulte difference between actualReeferTemp And Setpoint Greater Than 5F
+    WHEN actualReeferMode = 2 THEN "On"
+    ELSE "Unknown"
+  END AS actualReeferModeMessage,
   reeferMode,
   CASE
     WHEN reeferMode = 0 THEN "Off"
@@ -95,4 +102,4 @@ from `agy-intelligence-hub.bronze.ditat_full`
 where 
   not isDeleted 
 and 
-  regexp_contains(primaryTrailerId, "[A-Z0-9]+");
+  regexp_contains(primaryTrailerId, "[A-Z0-9]+")

@@ -1,6 +1,6 @@
 scheduler_config:
   - sql: incremental_update_golden.ditat_samsara_merged_master.sql
-    schedule: "*/15 * * * *" # every 15 minutes
+    schedule: "*/5 * * * *" # every 5 minutes
     timezone: "UTC"
   - sql: create_models.reefer_anomaly_detector_v2.sql
     schedule: "0 0 * * *" # every day at 00:00 AM

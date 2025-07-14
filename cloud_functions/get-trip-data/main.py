@@ -40,7 +40,7 @@ def get_trailer_and_trips(request: Request):
     
     df = pd.read_gbq("""
         SELECT trailer_id, ARRAY_AGG(distinct trip_id) as trip_ids 
-        FROM `agy-intelligence-hub.golden.master_grouped_sub-trip_level` 
+        FROM `agy-intelligence-hub.golden.master_grouped_subtrip_level` 
         GROUP BY trailer_id
     """)
     return df.to_json(orient='records')
@@ -76,7 +76,7 @@ def get_trip_data(request: Request):
         return json.dumps(error_response), 400, {'Content-Type': 'application/json'}
     
     df = pd.read_gbq(f"""
-        SELECT * FROM `agy-intelligence-hub.golden.master_grouped_sub-trip_level` 
+        SELECT * FROM `agy-intelligence-hub.golden.master_grouped_subtrip_level` 
         WHERE trailer_id = '{trailer_id}' AND trip_id = '{trip_id}'
     """)
      
