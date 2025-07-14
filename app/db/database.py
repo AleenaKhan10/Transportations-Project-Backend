@@ -13,4 +13,7 @@ DATABASE_URL = URL.create(
     query={"unix_socket": settings.INSTANCE_UNIX_SOCKET} if settings.INSTANCE_UNIX_SOCKET else EMPTY_DICT,
 )
 
+# For debugging purposes, print the database URL
+print(f"Database URL: {DATABASE_URL}")
+
 engine = create_engine(DATABASE_URL, echo=True)
