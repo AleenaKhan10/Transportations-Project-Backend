@@ -7,9 +7,12 @@ class Settings(BaseSettings):
 
     # Database settings
     DB_USER: str
-    DB_PASSWORD: str
-    DB_HOST: str
+    DB_PASS: str
+    DB_HOST: str | None = None
     DB_NAME: str
+    
+    # Cloud Run specific settings for Database
+    INSTANCE_UNIX_SOCKET: str | None = None
     
     # Auth settings
     AUTH_ROUTER_PREFIX: str = "/auth"
