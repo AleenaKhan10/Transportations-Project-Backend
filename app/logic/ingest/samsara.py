@@ -1,5 +1,6 @@
 import datetime
 
+import numpy as np
 import pandas as pd
 from config import settings
 from helpers.utils import dump_json
@@ -60,10 +61,13 @@ def ingest_trailer_temp_data(ingested_at: datetime.datetime | None = None):
 
 
 def ingest_trailer_stats_data(ingested_at: datetime.datetime | None = None):
+    ingested_at = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
+    
     types = ["reeferRunMode", "reeferSetPointTemperatureMilliCZone1"]
-    stats_df = samsara_api.get_all_stats(tag_ids=[107382], types=types)
     flattened_dfs = []
-    cols_to_check_nan = []
+    time_cols = []
+    
+    stats_df = samsara_api.get_all_stats(tag_ids=[107382], types=types)
     
     cols_to_flatten = types
     for col in cols_to_flatten:
@@ -71,16 +75,20 @@ def ingest_trailer_stats_data(ingested_at: datetime.datetime | None = None):
         flattened = pd.json_normalize(stats_df[col])
         # Add a prefix to the new columns
         flattened.columns = [f"{col}{sub_col.title()}" for sub_col in flattened.columns]
-        cols_to_check_nan.extend(flattened.columns)
+        time_cols.extend([col for col in flattened.columns if 'Time' in col])
         flattened_dfs.append(flattened)
 
     # Concatenate the original DataFrame (without the nested columns) with the new flattened DataFrames
-    stats_df = (
-        pd.concat([stats_df.drop(columns=cols_to_flatten)] + flattened_dfs, axis=1)
-        .dropna(subset=cols_to_check_nan)
-        .reset_index(drop=True)
-    )
-    stats_df["ingestedAt"] = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
+    stats_df = pd.concat([stats_df.drop(columns=cols_to_flatten)] + flattened_dfs, axis=1)
+    
+    # Fill missing timestamps with the current timestamp
+    stats_df[time_cols] = stats_df[time_cols].fillna(ingested_at.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    
+    # Replace NaN values with None
+    # NOTE: Do we actually need to keep the NaN values? As during the merging process in BQ the non-matching rows are anyway null!
+    stats_df = stats_df.replace({np.nan: None}).reset_index(drop=True)
+
+    stats_df["ingestedAt"] = ingested_at
     stats_df.to_gbq(
         destination_table="bronze.samsara_trailer_stats",
         project_id="agy-intelligence-hub",
