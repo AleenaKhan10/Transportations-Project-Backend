@@ -1,3 +1,4 @@
+import datetime
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
@@ -14,9 +15,9 @@ async def ingest_ditat():
 
 @router.post("/samsara", dependencies=[Depends(verify_static_token)])
 async def ingest_samsara_temp():
-    
+    ingested_at = datetime.datetime.now(tz=datetime.timezone.utc)
     result = {
-        "trailer_temp": ingest_trailer_temp_data(),
-        "trailer_stats": ingest_trailer_stats_data(),
+        "trailer_temp": ingest_trailer_temp_data(ingested_at),
+        "trailer_stats": ingest_trailer_stats_data(ingested_at),
     }
     return JSONResponse(content=result) 

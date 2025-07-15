@@ -11,7 +11,7 @@ TAG_IDS = [107382]
 samsara_api = SamsaraAPI(settings.SAMSARA_TOKEN)
 
 
-def ingest_trailer_temp_data():
+def ingest_trailer_temp_data(ingested_at: datetime.datetime | None = None):
     sensors_df = samsara_api.get_all_sensors()
     sensor_ids = sensors_df["id"].tolist()
     temperatures_df = samsara_api.get_temperatures_batched(sensor_ids)
@@ -32,7 +32,7 @@ def ingest_trailer_temp_data():
     merged_df['tags'] = merged_df['tags'].apply(dump_json)
     merged_df['installedGateway'] = merged_df['installedGateway'].apply(dump_json)
     merged_df['externalIds'] = merged_df['externalIds'].apply(dump_json)
-    merged_df['ingestedAt'] = datetime.datetime.now(tz=datetime.timezone.utc)
+    merged_df['ingestedAt'] = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
     merged_df = merged_df[
         [
             "sensorId",
@@ -59,7 +59,7 @@ def ingest_trailer_temp_data():
     return {"status": "success"}
 
 
-def ingest_trailer_stats_data():
+def ingest_trailer_stats_data(ingested_at: datetime.datetime | None = None):
     types = ["reeferRunMode", "reeferSetPointTemperatureMilliCZone1"]
     stats_df = samsara_api.get_all_stats(tag_ids=[107382], types=types)
     flattened_dfs = []
@@ -80,7 +80,7 @@ def ingest_trailer_stats_data():
         .dropna(subset=cols_to_check_nan)
         .reset_index(drop=True)
     )
-    stats_df["ingestedAt"] = datetime.datetime.now(tz=datetime.timezone.utc)
+    stats_df["ingestedAt"] = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
     stats_df.to_gbq(
         destination_table="bronze.samsara_trailer_stats",
         project_id="agy-intelligence-hub",
