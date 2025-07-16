@@ -60,6 +60,8 @@ SELECT
   priority,
   reefer_mode_id,
   reefer_mode,
+  required_reefer_mode_id,
+  required_reefer_mode,
   max_allowed_deviation,
   required_temp,
   driver_set_temp,
