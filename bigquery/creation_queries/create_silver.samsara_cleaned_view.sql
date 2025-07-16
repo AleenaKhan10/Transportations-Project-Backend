@@ -33,7 +33,7 @@ samsara_processed AS (
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', ambientTemperatureTime) AS ambientTemperatureTime,
     vehicleId,
     trailerId,
-    trailerName,
+    REGEXP_EXTRACT(trailerName, 'RX[0-9]{5}E') as trailerName,
     JSON_EXTRACT_SCALAR(tags, "$[0].id") AS tagId,
     JSON_EXTRACT_SCALAR(tags, "$[0].name") AS tagName,
     JSON_EXTRACT_SCALAR(installedGateway, "$.model") AS installedGatewayModel,
