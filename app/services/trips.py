@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
-from db.models import User
+from models.user import User
 from logic.auth.security import get_current_user
 from logic.trips import get_trailer_and_trips, get_trip_data
 

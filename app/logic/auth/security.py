@@ -6,8 +6,8 @@ from sqlmodel import Session, select
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import Depends, HTTPException, status, Header
 
-from db.models import User
 from config import settings
+from models.user import User
 from db.database import engine
 
 

@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from config import settings
-from db.models import User, UserCreate
+from models.user import User, UserCreate
 from logic.auth import create_user as create_user_service, authenticate_user, create_access_token
 
 
