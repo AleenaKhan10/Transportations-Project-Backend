@@ -157,7 +157,6 @@ class Driver(SQLModel, table=True):
     def parse_calling_info(calling_info: str) -> List[str]:
         """Parse driverCallingInfor string into a list"""
         return (calling_info
-                .replace(",", "")
                 .replace('"', "")
                 .split(","))
     
