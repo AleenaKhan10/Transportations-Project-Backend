@@ -12,7 +12,7 @@ from sqlmodel import SQLModel
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
-app = FastAPI()
+app = FastAPI(title="AGY Intelligence Hub", version="1.0.0")
 
 app.add_event_handler("startup", create_db_and_tables)
 
