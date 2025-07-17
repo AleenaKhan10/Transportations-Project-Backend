@@ -6,12 +6,11 @@
 --   * for the last 30 mins.
 MERGE
   `agy-intelligence-hub.golden.ditat_samsara_merged_master` AS T
-USING
-  (
-    -- The source query now only looks at recent data (e.g., last 30 mins)
-    -- to find new records and update existing ones.
+USING (
+  -- The source query only looks at recent data (e.g., last 30 mins)
+  -- to find new records and update existing ones.
   WITH
-    recent_trips AS (
+    all_trips AS (
     SELECT
       trailer_id,
       trip_id,
@@ -41,21 +40,39 @@ USING
       `agy-intelligence-hub.golden.ditat_grouped_subtrip_level`
       -- Process data from the last 30 mins to catch any new or delayed records.
     WHERE
-      temp_updated_on >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE) ),
-    closest_samsara_readings AS (
+      temp_updated_on >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 MINUTE) 
+  ),
+  closest_samsara_readings AS (
     SELECT
       d.*,
+      CASE 
+        WHEN s.actualReeferMode IS NULL THEN 'Dry Load'
+        ELSE s.actualReeferMode
+        END AS samsara_reefer_mode,
+      CASE 
+        WHEN s.actualReeferModeTime IS NULL THEN s.ambientTemperatureTime
+        ELSE s.actualReeferModeTime
+        END AS samsara_reefer_mode_time,
+      CASE 
+        WHEN s.driverSetPointInF IS NULL THEN 99
+        ELSE s.driverSetPointInF
+        END AS samsara_driver_set_point,
+      CASE 
+        WHEN s.driverSetPointTime IS NULL THEN s.ambientTemperatureTime
+        ELSE s.driverSetPointTime
+        END AS samsara_driver_set_point_time,
       s.ambientTemperatureInF AS samsara_temp,
       s.ambientTemperatureTime AS samsara_temp_time,
       ROW_NUMBER() OVER (PARTITION BY d.trailer_id, d.trip_id, d.temp_updated_on ORDER BY ABS(DATETIME_DIFF(s.ambientTemperatureTime, d.temp_updated_on, SECOND)) ) AS rn
     FROM
-      recent_trips d
+      all_trips d
     LEFT JOIN
       `silver.samsara_cleaned_view` s
     ON
       d.trailer_id = s.trailerName
       AND s.ambientTemperatureTime BETWEEN DATETIME_SUB(d.temp_updated_on, INTERVAL 30 MINUTE)
-      AND DATETIME_ADD(d.temp_updated_on, INTERVAL 30 MINUTE) )
+      AND DATETIME_ADD(d.temp_updated_on, INTERVAL 30 MINUTE) 
+  )
   SELECT
     trailer_id,
     trip_id,
@@ -77,6 +94,10 @@ USING
     samsara_temp,
     samsara_temp_time,
     temp_updated_on AS ditat_temp_time,
+    samsara_reefer_mode,
+    samsara_reefer_mode_time,
+    samsara_driver_set_point,
+    samsara_driver_set_point_time,
     trip_start_time,
     trip_end_time,
     leg_start_time,
@@ -86,7 +107,8 @@ USING
   FROM
     closest_samsara_readings
   WHERE
-    rn = 1 ) AS S
+    rn = 1 
+) AS S
 ON
   T.trailer_id = S.trailer_id
   AND T.trip_id = S.trip_id
