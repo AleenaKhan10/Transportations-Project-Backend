@@ -1,8 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from fastapi import HTTPException
 import pytz
 import requests
 import pandas_gbq as pd
 from config import settings
+from models.alert_filter import AlertFilter, AlertFilterCreate, AlertFilterUpdate
+from sqlmodel import select, Session
+from db.database import engine
+
 
 SLACK_BOT_TOKEN = settings.SLACK_BOT_TOKEN
 SLACK_CHANNEL = settings.SLACK_CHANNEL
@@ -112,25 +117,45 @@ cfgs = [
             "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
         )
     },
+    # dry load alerts can be added here if needed
 ]
 
+def get_alert_filters():
+    filters = select(AlertFilter).where(AlertFilter.exclude == True)
+    with Session(engine) as session:
+        filters = session.exec(filters).all()
+    return filters
 
 def send_slack_temp_alerts():
     blocks = []
+
     chicago_tz = pytz.timezone("America/Chicago")
     dt_format_str = "%b %d, %Y at %I:%M %p %Z"
     
+    filters = get_alert_filters()
+
+    # Build a set of (trailer_id, trip_id) pairs to exclude
+    exclude_pairs = set((f.trailer_id, f.trip_id) for f in filters)
+    
     for cfg in cfgs:
-        df = pd.read_gbq(cfg["query"], progress_bar_type=None)
+        
+        df = pd.read_gbq(cfg["query"], progress_bar_type=None, project_id='agy-intelligence-hub')
+        
         if not df.empty:
+            # Filter out excluded alerts
+            df = df[~df.apply(lambda row: (row['trailer_id'], row['trip_id']) in exclude_pairs, axis=1)]
+
             # Format the datetime column to be more readable
             # The DATETIME from BigQuery is naive, so we make it timezone-aware before formatting.
             df['samsara_temp_time'] = df['samsara_temp_time'].dt.tz_localize(chicago_tz).dt.strftime(dt_format_str)
+
             
             blocks.append({"type": "header", "text": {"type": "plain_text", "text": cfg["title"], "emoji": True}})
             blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {df.shape[0]}"}]})
+
             for _, row in df.iterrows():
                 blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": cfg["template"].format(**row)}})
+
             blocks.append({"type": "divider"})
 
     if not blocks:
@@ -139,7 +164,7 @@ def send_slack_temp_alerts():
     # Add a human-readable timestamp to the message
     current_time = datetime.now(chicago_tz).strftime(dt_format_str)
     blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Alerts generated at: {current_time}"}]})
-
+    print("blocks:", blocks)
 
     payload = {
         "channel": SLACK_CHANNEL,
@@ -154,3 +179,41 @@ def send_slack_temp_alerts():
     slack_response = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
 
     return {"message": slack_response.text, "slack_status": slack_response.status_code}
+
+def get_all_alert_filters():
+    with Session(engine) as session:
+        return session.exec(select(AlertFilter)).all()
+
+def get_alert_filter_by_id(filter_id: int):
+    with Session(engine) as session:
+        return session.get(AlertFilter, filter_id)
+
+def create_alert_filter_db(alert_filter: AlertFilterCreate):
+    with Session(engine) as session:
+        new_filter = AlertFilter(**alert_filter.model_dump())
+        session.add(new_filter)
+        session.commit()
+        session.refresh(new_filter)
+        return new_filter
+
+def update_alert_filter_db(filter_id: int, alert_filter: AlertFilterUpdate):
+    with Session(engine) as session:
+        db_filter = session.get(AlertFilter, filter_id)
+        if not db_filter:
+            return None
+        for key, value in alert_filter.model_dump(exclude_unset=True).items():
+            setattr(db_filter, key, value)
+        db_filter.updated_at = datetime.now(tz=timezone.utc)
+        session.add(db_filter)
+        session.commit()
+        session.refresh(db_filter)
+        return db_filter
+
+def delete_alert_filter_db(filter_id: int):
+    with Session(engine) as session:
+        db_filter = session.get(AlertFilter, filter_id)
+        if not db_filter:
+            return None
+        session.delete(db_filter)
+        session.commit()
+        return {"ok": True}
