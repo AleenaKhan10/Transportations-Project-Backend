@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+
+# VSCode settings
+.vscode/
+
+# macOS
+.DS_Store
+
+# Test and temp files
+temp/
+temp.json
+last_reply
+last_reply.json
+test/
+test.py
+
+# Logs
+*.log
+
+# Requirements backup
+pip-log.txt
+
+# Byte-compiled files
+*.pyc
+*.pyo
+*.pyd
+
+# Coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+client_certification
+./client_certification
+
+node_modules
+./node_modules
