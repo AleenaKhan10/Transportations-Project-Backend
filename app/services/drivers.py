@@ -1,9 +1,11 @@
 from typing import List
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from logic.auth.security import get_current_user
+
 from helpers import logger
-from models.drivers import Driver, DriverResponse, DriverCallUpdate
+from logic.auth.security import get_current_user
+from models.drivers import Driver, DriverCallUpdate
 
 
 router = APIRouter(
@@ -12,7 +14,7 @@ router = APIRouter(
 
 @router.get("/raw", response_model=List[Driver])
 async def get_all_drivers_data_endpoint(limit: int = 5000):
-    logger.info("getting all drivers' raw data")
+    logger.info("getting all drivers' data")
     return Driver.get_all(limit=limit)
 
 # @router.get("/json", response_model=List[DriverResponse])
