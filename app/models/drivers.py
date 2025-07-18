@@ -32,6 +32,8 @@ class Driver(SQLModel, table=True):
     dispatchMessage: Optional[bool] = None
     accountCall: Optional[bool] = None
     accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
+
     
     @classmethod
     def get_session(cls) -> Session:
@@ -98,13 +100,13 @@ class Driver(SQLModel, table=True):
                                 driverId, updatedOn, safetyMessage, status, companyId, hosSupport,
                                 firstName, dispatcher, maintainanceCall, lastName, firstLanguage,
                                 maintainanceMessage, truckId, secondLanguage, dispatchCall, phoneNumber,
-                                globalDnd, dispatchMessage, email, safetyCall, accountCall, hiredOn, accountMessage
+                                globalDnd, dispatchMessage, email, safetyCall, accountCall, hiredOn, accountMessage, telegramId
                             )
                             VALUES (
                                 :driverId, :updatedOn, :safetyMessage, :status, :companyId, :hosSupport,
                                 :firstName, :dispatcher, :maintainanceCall, :lastName, :firstLanguage,
                                 :maintainanceMessage, :truckId, :secondLanguage, :dispatchCall, :phoneNumber,
-                                :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage
+                                :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage, :telegramId
                             )
                             ON DUPLICATE KEY UPDATE
                                 updatedOn = VALUES(updatedOn),
@@ -128,7 +130,8 @@ class Driver(SQLModel, table=True):
                                 safetyCall = VALUES(safetyCall),
                                 accountCall = VALUES(accountCall),
                                 hiredOn = VALUES(hiredOn),
-                                accountMessage = VALUES(accountMessage);
+                                accountMessage = VALUES(accountMessage),
+                                telegramId = VALUES(telegramId)
                             """),
                         {
                             "driverId": driver_update.driverId,
@@ -154,6 +157,7 @@ class Driver(SQLModel, table=True):
                             "accountCall": driver_update.accountCall,
                             "hiredOn": driver_update.hiredOn,
                             "accountMessage": driver_update.accountMessage,
+                            "telegramId": driver_update.telegramId
                         }
                     )
                 
@@ -272,6 +276,7 @@ class DriverResponse(SQLModel):
     dispatchMessage: Optional[bool] = None
     accountCall: Optional[bool] = None
     accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
     
     # def to_dict(self) -> Dict[str, Any]:
     #     """Convert to dictionary"""
@@ -308,6 +313,8 @@ class DriverCallUpdate(SQLModel):
     dispatchMessage: Optional[bool] = None
     accountCall: Optional[bool] = None
     accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
+
     
     # def apply_to_driver(self, driver: Driver) -> Driver:
     #     """Apply this update to a driver instance"""
