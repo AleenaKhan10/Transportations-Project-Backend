@@ -32,6 +32,8 @@ class Driver(SQLModel, table=True):
     dispatchMessage: Optional[bool] = None
     accountCall: Optional[bool] = None
     accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
+
     
     @classmethod
     def get_session(cls) -> Session:
@@ -41,7 +43,6 @@ class Driver(SQLModel, table=True):
     @classmethod
     def get_all(cls, limit: int = 5000) -> List["Driver"]:
         """Get all drivers from the database"""
-        # TODO: Need to add an offset logic as well.
         logger.info('GetAllDriversData request reach out to correct service')
         
         with cls.get_session() as session:
@@ -53,7 +54,26 @@ class Driver(SQLModel, table=True):
             except Exception as err:
                 logger.error(f'Database query error: {err}', exc_info=True)
                 return []
-
+    
+    # @classmethod
+    # def get_all_raw(cls, limit: int = 5000) -> List[Dict[str, Any]]:
+    #     """Get all drivers data as raw dictionary format"""
+    #     logger.info('GetAllDriversData raw request reach out to correct service')
+        
+    #     with cls.get_session() as session:
+    #         try:
+    #             result = session.exec(text(
+    #                 f"SELECT * FROM dev.drivers LIMIT {limit};"
+    #             ))
+                
+    #             columns = result.keys()
+    #             data = [dict(zip(columns, row)) for row in result.fetchall()]
+    #             return data
+                
+    #         except Exception as err:
+    #             logger.error(f'Database query error: {err}', exc_info=True)
+    #             return []
+    
     @classmethod
     def get_by_id(cls, driver_id: str) -> Optional["Driver"]:
         """Get a driver by ID"""
@@ -80,13 +100,13 @@ class Driver(SQLModel, table=True):
                                 driverId, updatedOn, safetyMessage, status, companyId, hosSupport,
                                 firstName, dispatcher, maintainanceCall, lastName, firstLanguage,
                                 maintainanceMessage, truckId, secondLanguage, dispatchCall, phoneNumber,
-                                globalDnd, dispatchMessage, email, safetyCall, accountCall, hiredOn, accountMessage
+                                globalDnd, dispatchMessage, email, safetyCall, accountCall, hiredOn, accountMessage, telegramId
                             )
                             VALUES (
                                 :driverId, :updatedOn, :safetyMessage, :status, :companyId, :hosSupport,
                                 :firstName, :dispatcher, :maintainanceCall, :lastName, :firstLanguage,
                                 :maintainanceMessage, :truckId, :secondLanguage, :dispatchCall, :phoneNumber,
-                                :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage
+                                :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage, :telegramId
                             )
                             ON DUPLICATE KEY UPDATE
                                 updatedOn = VALUES(updatedOn),
@@ -110,7 +130,8 @@ class Driver(SQLModel, table=True):
                                 safetyCall = VALUES(safetyCall),
                                 accountCall = VALUES(accountCall),
                                 hiredOn = VALUES(hiredOn),
-                                accountMessage = VALUES(accountMessage);
+                                accountMessage = VALUES(accountMessage),
+                                telegramId = VALUES(telegramId)
                             """),
                         {
                             "driverId": driver_update.driverId,
@@ -136,6 +157,7 @@ class Driver(SQLModel, table=True):
                             "accountCall": driver_update.accountCall,
                             "hiredOn": driver_update.hiredOn,
                             "accountMessage": driver_update.accountMessage,
+                            "telegramId": driver_update.telegramId
                         }
                     )
                 
@@ -145,6 +167,125 @@ class Driver(SQLModel, table=True):
                 logger.error(f'Database query error: {err}', exc_info=True)
                 session.rollback()
                 raise
+    
+    # def update_calling_info(self, calling_info: str) -> bool:
+    #     """Update this driver's calling information"""
+    #     logger.info(f'Updating driver {self.driverId} calling information')
+        
+    #     with self.get_session() as session:
+    #         try:
+    #             # Attach this instance to the session
+    #             session.add(self)
+    #             self.driverCallingInfor = calling_info
+    #             session.commit()
+    #             session.refresh(self)
+    #             return True
+                
+    #         except Exception as err:
+    #             logger.error(f'Database query error: {err}', exc_info=True)
+    #             session.rollback()
+    #             return False
+    
+    # def save(self) -> bool:
+    #     """Save or update this driver in the database"""
+    #     with self.get_session() as session:
+    #         try:
+    #             session.add(self)
+    #             session.commit()
+    #             session.refresh(self)
+    #             return True
+                
+    #         except Exception as err:
+    #             logger.error(f'Database query error: {err}', exc_info=True)
+    #             session.rollback()
+    #             return False
+    
+    # def delete(self) -> bool:
+    #     """Delete this driver from the database"""
+    #     with self.get_session() as session:
+    #         try:
+    #             session.delete(self)
+    #             session.commit()
+    #             return True
+                
+    #         except Exception as err:
+    #             logger.error(f'Database query error: {err}', exc_info=True)
+    #             session.rollback()
+    #             return False
+    
+    # def to_structured_response(self) -> "DriverResponse":
+    #     """Convert this driver to a structured response format"""    
+    #     # Create structured response with bounds checking
+    #     return DriverResponse(
+    #         driverId=self.driverId,
+    #         status=self.status,
+    #         firstName=self.firstName,
+    #         lastName=self.lastName,
+    #         truckId=self.truckId,
+    #         phoneNumber=self.phoneNumber,
+    #         email=self.email,
+    #         hiredOn=self.hiredOn,
+    #         updatedOn=self.updatedOn,
+    #         companyId=self.companyId,
+    #         dispatcher=self.dispatcher,
+    #         firstLanguage=self.firstLanguage,
+    #         secondLanguage=self.secondLanguage,
+    #         globalDnd=self.globalDnd,
+    #         safetyCall=self.safetyCall,
+    #         safetyMessage=self.safetyMessage,
+    #         hosSupport=self.hosSupport,
+    #         maintainanceCall=self.maintainanceCall,
+    #         maintainanceMessage=self.maintainanceMessage,
+    #         dispatchCall=self.dispatchCall,
+    #         dispatchMessage=self.dispatchMessage,
+    #         accountCall=self.accountCall,
+    #         accountMessage=self.accountMessage,
+    #     )
+    
+    # @classmethod
+    # def get_all_structured(cls, limit: int = 5000) -> List["DriverResponse"]:
+    #     """Get all drivers as structured response format"""
+    #     logger.info('GetAllDriversDataJson request reach out to correct service')
+        
+    #     drivers = cls.get_all(limit)
+    #     return [driver.to_structured_response() for driver in drivers]
+
+
+class DriverResponse(SQLModel):
+    """Response model for cleaned driver data"""
+    driverId: Optional[str] = None
+    status: Optional[str] = None
+    firstName: Optional[str] = None
+    lastName: Optional[str] = None
+    truckId: Optional[str] = None
+    phoneNumber: Optional[str] = None
+    email: Optional[str] = None
+    hiredOn: Optional[str] = None
+    updatedOn: Optional[str] = None
+    companyId: Optional[str] = None
+    dispatcher: Optional[str] = None
+    firstLanguage: Optional[str] = None
+    secondLanguage: Optional[str] = None
+    globalDnd: Optional[bool] = None
+    safetyCall: Optional[bool] = None
+    safetyMessage: Optional[bool] = None
+    hosSupport: Optional[bool] = None
+    maintainanceCall: Optional[bool] = None
+    maintainanceMessage: Optional[bool] = None
+    dispatchCall: Optional[bool] = None
+    dispatchMessage: Optional[bool] = None
+    accountCall: Optional[bool] = None
+    accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
+    
+    # def to_dict(self) -> Dict[str, Any]:
+    #     """Convert to dictionary"""
+    #     return self.model_dump()
+    
+    # @classmethod
+    # def from_driver(cls, driver: Driver) -> "DriverResponse":
+    #     """Create DriverResponse from Driver instance"""
+    #     return driver.to_structured_response()
 
 
 class DriverCallUpdate(SQLModel):
@@ -172,3 +313,21 @@ class DriverCallUpdate(SQLModel):
     dispatchMessage: Optional[bool] = None
     accountCall: Optional[bool] = None
     accountMessage: Optional[bool] = None
+    telegramId: Optional[str] = None
+
+    
+    # def apply_to_driver(self, driver: Driver) -> Driver:
+    #     """Apply this update to a driver instance"""
+    #     driver.driverCallingInfor = self.driverCallingInfor
+    #     return driver
+
+#     @classmethod
+#     def create_batch(
+#         cls, updates: List[Dict[str, str] | "DriverCallUpdate"]
+#     ) -> List["DriverCallUpdate"]:
+#         """Create a batch of DriverCallUpdate instances"""
+#         return [
+#             cls(**update) if isinstance(update, dict) else update
+#             for update in updates
+#             if isinstance(update, (dict, cls))
+#         ]
