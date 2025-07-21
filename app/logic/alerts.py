@@ -29,7 +29,7 @@ common_fields = """
   priority, 
   max_allowed_deviation, 
   required_temp, 
-  driver_set_temp, 
+  samsara_driver_set_point, 
   samsara_temp, 
   DATETIME(samsara_temp_time, 'America/Chicago') AS samsara_temp_time"""
 
@@ -44,7 +44,7 @@ WHERE
   rn = 1 
   AND reefer_mode_id != 0
   AND samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-  -- AND CONCAT(leg_id, status_id) NOT IN ("10", "11") -- this filter is not required
+  AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
 ORDER BY samsara_temp_time DESC
 """
 
@@ -53,8 +53,9 @@ query_setpoint = f"""
   WHERE 
     required_temp != 99
     AND required_temp IS NOT NULL
-    AND driver_set_temp IS NOT NULL
-    AND (required_temp - driver_set_temp) != 0
+    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
+    AND samsara_driver_set_point IS NOT NULL
+    AND (required_temp - samsara_driver_set_point) != 0
     AND samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
 )
 SELECT 
@@ -63,18 +64,16 @@ FROM ranked
 WHERE 
   rn = 1 
   AND reefer_mode_id != 0
-  AND CONCAT(leg_id, status_id) NOT IN ("10", "11")
 ORDER BY samsara_temp_time DESC
-LIMIT 5
 """
 
 query_anomalies = f"""
 {common_ranking_cte}
   WHERE
     samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-    AND CONCAT(leg_id, status_id) NOT IN ("10", "11")
+    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
     AND reefer_mode_id != 0
-    AND required_temp = driver_set_temp
+    AND required_temp = samsara_driver_set_point
 )
 SELECT 
   {common_fields},
@@ -87,11 +86,65 @@ WHERE
 ORDER BY samsara_temp_time DESC
 """
 
+query_dryload = f""" 
+WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY trailer_id ORDER BY  samsara_reefer_mode_time DESC) AS rn
+  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
+  WHERE
+    samsara_reefer_mode_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
+    )
+  SELECT 
+    trailer_id,
+    trip_id,
+    truck_id,
+    leg_id,
+    status_id,
+    status,
+    required_reefer_mode,
+    samsara_reefer_mode,
+    samsara_reefer_mode_time,
+    CASE 
+    WHEN samsara_reefer_mode != 'Dry Load' THEN 'Please Note Reefer is ON'
+    ELSE 'All good' 
+    END AS Note
+  FROM ranked 
+  WHERE rn = 1 
+  AND required_reefer_mode_id = 0
+  """
 
+query_dryload_anomalies = """ 
+WITH ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY trailer_id ORDER BY  samsara_reefer_mode_time DESC) AS rn
+  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
+  WHERE
+    samsara_reefer_mode_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
+    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
+    )
+  SELECT 
+    trailer_id,
+    trip_id,
+    truck_id,
+    leg_id,
+    status_id,
+    status,
+    priority_id,
+    priority,
+    max_allowed_deviation,
+    ABS(ROUND(required_temp - samsara_temp, 3)) AS temp_diff,
+    required_reefer_mode_id,
+    required_reefer_mode,
+    samsara_reefer_mode,
+    samsara_reefer_mode_time
+  FROM ranked 
+  WHERE rn = 1 
+  AND required_reefer_mode_id != 0
+  AND samsara_reefer_mode = 'Dry Load' 
+
+"""
 common_template = (
-    "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
     "> *Required Temp:* `{required_temp}`\n"
-    "> *Driver Set:* `{driver_set_temp}`\n"
+    "> *Driver Set:* `{samsara_driver_set_point}`\n"
     "> *Samsara Temp:* `{samsara_temp}`\n"
     "> *Captured At* `{samsara_temp_time}`"
 )
@@ -112,7 +165,28 @@ cfgs = [
         "title": "🚨 Temperature Out of Range",
         "query": query_anomalies,
         "template": (
-            f"{common_template}\n"
+            f"{common_template} \n"
+            "> *Severity:* `{priority_id} ({priority})`\n"
+            "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
+        )
+    },
+    
+    {
+        "title": "ℹ️ Dry Load",
+        "query": query_dryload,
+        "template": (
+            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
+            "> *Required Reefer Mode:* `{required_reefer_mode}` | *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}` \n"
+            "> *Last Updated On:* `{samsara_reefer_mode_time}`  | *Note:* `{Note}`\n "
+        )
+    },
+    {
+        "title": "‼️ Attention / Dry Load Issue ‼️  ",
+        "query": query_dryload_anomalies,
+        "template": (
+            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
+            "> *Reefer Mode:* `{required_reefer_mode}` | *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}‼️ ` \n"
+            "> *Last Updated On:* `{samsara_reefer_mode_time}` | *Status:* `{status}`"
             "> *Severity:* `{priority_id} ({priority})`\n"
             "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
         )
@@ -138,7 +212,6 @@ def send_slack_temp_alerts():
     exclude_pairs = set((f.trailer_id, f.trip_id) for f in filters)
     
     for cfg in cfgs:
-        
         df = pd.read_gbq(cfg["query"], progress_bar_type=None, project_id='agy-intelligence-hub')
         
         if not df.empty:
@@ -148,7 +221,6 @@ def send_slack_temp_alerts():
             # Format the datetime column to be more readable
             # The DATETIME from BigQuery is naive, so we make it timezone-aware before formatting.
             df['samsara_temp_time'] = df['samsara_temp_time'].dt.tz_localize(chicago_tz).dt.strftime(dt_format_str)
-
             
             blocks.append({"type": "header", "text": {"type": "plain_text", "text": cfg["title"], "emoji": True}})
             blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {df.shape[0]}"}]})
