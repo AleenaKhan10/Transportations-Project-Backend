@@ -66,7 +66,7 @@ select
     WHEN priority = 4 THEN 2
   END AS MaxTempDeviationAllowedInF, -- This is the max absolute temp diff that is allowed beyond which alter will go
   reeferTemperature AS reeferTemperatureInF,
-  actualReeferSetTemperature AS actualReeferSetTemperatureInF,
+  ROUND(actualReeferSetTemperature, 0) AS actualReeferSetTemperatureInF, -- Reefers don't have the ability to set temperatures in decimals
   actualReeferReturnTemperature AS actualReeferReturnTemperatureInF,
   PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', actualReeferUpdatedOn) AS actualReeferUpdatedOn,
   dispatchedByUserName,

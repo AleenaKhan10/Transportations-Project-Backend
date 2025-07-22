@@ -83,7 +83,7 @@ merged AS (
   SELECT
     sp.*,
     st.reeferSetPoint,
-    ROUND(((st.reeferSetPoint / 1000))*(9/5) + 32, 2) AS reeferSetPointInF,
+    ROUND(((st.reeferSetPoint / 1000))*(9/5) + 32, 0) AS reeferSetPointInF, -- Reefers don't have the ability to set temperatures in decimals
     st.reeferSetPointTime,
     rm.reeferRunMode,
     rm.reeferRunModeTime
