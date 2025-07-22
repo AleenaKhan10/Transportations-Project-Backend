@@ -1,207 +1,87 @@
 from datetime import datetime, timezone
-from fastapi import HTTPException
+
 import pytz
 import requests
-import pandas_gbq as pd
-from config import settings
-from models.alert_filter import AlertFilter, AlertFilterCreate, AlertFilterUpdate
+import pandas as pd
+import pandas_gbq as pdg
 from sqlmodel import select, Session
+
+from config import settings
 from db.database import engine
+from models.alert_filter import AlertFilter, AlertFilterCreate, AlertFilterUpdate
 
 
 SLACK_BOT_TOKEN = settings.SLACK_BOT_TOKEN
 SLACK_CHANNEL = settings.SLACK_CHANNEL
 
-
-common_ranking_cte = """
-WITH ranked AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY trailer_id, trip_id ORDER BY samsara_temp_time DESC) AS rn
-  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
-"""
-
-common_fields = """
-  trailer_id, 
-  trip_id, 
-  leg_id, 
-  truck_id, 
-  status, 
-  priority_id, 
-  priority, 
-  max_allowed_deviation, 
-  required_temp, 
-  samsara_driver_set_point, 
-  samsara_temp, 
-  DATETIME(samsara_temp_time, 'America/Chicago') AS samsara_temp_time"""
-
-query_99 = f"""
-{common_ranking_cte}
-  WHERE required_temp = 99
-)
-SELECT 
-  {common_fields}
-FROM ranked
-WHERE 
-  rn = 1 
-  AND reefer_mode_id != 0
-  AND samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-  AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
-ORDER BY samsara_temp_time DESC
-"""
-
-query_setpoint = f"""
-{common_ranking_cte}
-  WHERE 
-    required_temp != 99
-    AND required_temp IS NOT NULL
-    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
-    AND samsara_driver_set_point IS NOT NULL
-    AND (required_temp - samsara_driver_set_point) != 0
-    AND samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-)
-SELECT 
-  {common_fields}
-FROM ranked
-WHERE 
-  rn = 1 
-  AND reefer_mode_id != 0
-ORDER BY samsara_temp_time DESC
-"""
-
-query_anomalies = f"""
-{common_ranking_cte}
-  WHERE
-    samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
-    AND reefer_mode_id != 0
-    AND required_temp = samsara_driver_set_point
-)
-SELECT 
-  {common_fields},
-  ABS(ROUND(required_temp - samsara_temp, 3)) AS temp_diff
-FROM ranked 
-WHERE 
-  rn = 1
-  AND abs(samsara_temp-required_temp) > max_allowed_deviation
-  -- considering the status after unloading as we cannot determine the last leg.
-ORDER BY samsara_temp_time DESC
-"""
-
-query_dryload = f""" 
-WITH ranked AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY trailer_id ORDER BY  samsara_reefer_mode_time DESC) AS rn
-  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
-  WHERE
-    samsara_reefer_mode_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-    )
-  SELECT 
-    trailer_id,
-    trip_id,
-    truck_id,
-    leg_id,
-    status_id,
-    status,
-    required_reefer_mode,
-    samsara_reefer_mode,
-    samsara_reefer_mode_time,
-    CASE 
-    WHEN samsara_reefer_mode != 'Dry Load' THEN 'Please Note Reefer is ON'
-    ELSE 'All good' 
-    END AS Note
-  FROM ranked 
-  WHERE rn = 1 
-  AND required_reefer_mode_id = 0
-  """
-
-query_dryload_anomalies = """ 
-WITH ranked AS (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY trailer_id ORDER BY  samsara_reefer_mode_time DESC) AS rn
-  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
-  WHERE
-    samsara_reefer_mode_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 15 MINUTE)
-    AND ((leg_id = 1 AND status_id = 3) OR (leg_id != 1 AND status_id != 0))
-    )
-  SELECT 
-    trailer_id,
-    trip_id,
-    truck_id,
-    leg_id,
-    status_id,
-    status,
-    priority_id,
-    priority,
-    max_allowed_deviation,
-    ABS(ROUND(required_temp - samsara_temp, 3)) AS temp_diff,
-    required_reefer_mode_id,
-    required_reefer_mode,
-    samsara_reefer_mode,
-    samsara_reefer_mode_time
-  FROM ranked 
-  WHERE rn = 1 
-  AND required_reefer_mode_id != 0
-  AND samsara_reefer_mode = 'Dry Load' 
-
-"""
-common_template = (
-    "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
-    "> *Required Temp:* `{required_temp}`\n"
-    "> *Driver Set:* `{samsara_driver_set_point}`\n"
-    "> *Samsara Temp:* `{samsara_temp}`\n"
-    "> *Captured At* `{samsara_temp_time}`"
-)
+INTERVAL = 1
+INTERVAL_UNIT = "HOUR"
 
 
-cfgs = [
-    {
-        "title": "⚠️ Driver Setpoint Mismatch",
-        "query": query_setpoint,
-        "template": common_template,
-    },
-    {
-        "title": "🔥 99°F Required Temp",
-        "query": query_99,
-        "template": common_template,
-    },
-    {
-        "title": "🚨 Temperature Out of Range",
-        "query": query_anomalies,
-        "template": (
-            f"{common_template} \n"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
-        )
-    },
-    
-    {
-        "title": "ℹ️ Dry Load",
-        "query": query_dryload,
-        "template": (
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
-            "> *Required Reefer Mode:* `{required_reefer_mode}` | *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}` \n"
-            "> *Last Updated On:* `{samsara_reefer_mode_time}`  | *Note:* `{Note}`\n "
-        )
-    },
-    {
-        "title": "‼️ Attention / Dry Load Issue ‼️  ",
-        "query": query_dryload_anomalies,
-        "template": (
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}` | *Leg*: `{leg_id}` | *status:* `{status}`\n"
-            "> *Reefer Mode:* `{required_reefer_mode}` | *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}‼️ ` \n"
-            "> *Last Updated On:* `{samsara_reefer_mode_time}` | *Status:* `{status}`"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}`/`{max_allowed_deviation}`"
-        )
-    },
-    # dry load alerts can be added here if needed
-]
+def process_message_generic(message: str):
+    return message
+
+def process_dry_load_message(message: str):
+    return message.replace('\n> *Note:* `None`', '')
+
+# A dictionary of readable and visually appealing set of templates
+alert_templates = {
+    "⚠️ Driver Setpoint Mismatch": ((
+        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+        "> *Required Temp:* `{required_temp}°`\n"
+        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Samsara Temp:* `{samsara_temp}°`\n"
+        "> *Captured At:* `{samsara_temp_time}`"
+    ), process_message_generic),
+    "🔥 99°F Required Temp": ((
+        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+        "> *Required Temp:* `{required_temp}°`\n"
+        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Samsara Temp:* `{samsara_temp}°`\n"
+        "> *Captured At:* `{samsara_temp_time}`"
+    ), process_message_generic),
+    "🚨 Temperature Out of Range": ((
+        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+        "> *Severity:* `{priority_id} ({priority})`\n"
+        "> *Required Temp:* `{required_temp}°`\n"
+        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Samsara Temp:* `{samsara_temp}°`\n"
+        "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
+        "> *Captured At:* `{samsara_temp_time}`"
+    ), process_message_generic),
+    "ℹ️ Dry Load": ((
+        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+        "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
+        "> *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}`\n"
+        "> *Last Updated On:* `{samsara_reefer_mode_time}`\n"
+        "> *Note:* `{remarks}`"
+    ), process_dry_load_message),
+    "‼️ Attention / Issue ‼️": ((
+        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+        "> *Severity:* `{priority_id} ({priority})`\n"
+        "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
+        "> *Actual Samsara Reefer Mode:* `{samsara_reefer_mode} ‼️`\n"
+        "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
+        "> *Last Updated On:* `{samsara_reefer_mode_time}`"
+    ), process_message_generic),
+}
 
 def get_alert_filters():
-    filters = select(AlertFilter).where(AlertFilter.exclude == True)
+    filters = select(AlertFilter).where(AlertFilter.exclude is True)
     with Session(engine) as session:
         filters = session.exec(filters).all()
     return filters
 
 def send_slack_temp_alerts():
-    blocks = []
+    context_unit_part = INTERVAL_UNIT.lower() if INTERVAL == 1 else f"{INTERVAL} {INTERVAL_UNIT.lower()}s"
+    blocks = [
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": f"🔍 *Showing alerts from the last {context_unit_part}*"}]}
+    ]
 
     chicago_tz = pytz.timezone("America/Chicago")
     dt_format_str = "%b %d, %Y at %I:%M %p %Z"
@@ -211,27 +91,48 @@ def send_slack_temp_alerts():
     # Build a set of (trailer_id, trip_id) pairs to exclude
     exclude_pairs = set((f.trailer_id, f.trip_id) for f in filters)
     
-    for cfg in cfgs:
-        df = pd.read_gbq(cfg["query"], progress_bar_type=None, project_id='agy-intelligence-hub')
+    query = f"""
+      SELECT * FROM agy-intelligence-hub.diamond.alerts
+      WHERE 
+        samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {INTERVAL} {INTERVAL_UNIT})
+      AND 
+        alert_type != 'Ignore'
+    """
+
+    alerts_df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
+    
+    # Keep track of how many alerts are actually processed
+    alerts_processed = 0
+
+    for alert_type in alerts_df['alert_type'].unique().tolist():
+        template, message_processor = alert_templates[alert_type]
+        _df: pd.DataFrame = alerts_df[alerts_df['alert_type'] == alert_type].head(1)
         
-        if not df.empty:
-            # Filter out excluded alerts
-            df = df[~df.apply(lambda row: (row['trailer_id'], row['trip_id']) in exclude_pairs, axis=1)]
-
-            # Format the datetime column to be more readable
-            # The DATETIME from BigQuery is naive, so we make it timezone-aware before formatting.
-            df['samsara_temp_time'] = df['samsara_temp_time'].dt.tz_localize(chicago_tz).dt.strftime(dt_format_str)
+        if not _df.empty:
+            _df = _df[~_df.apply(lambda row: (row['trailer_id'], row['trip_id']) in exclude_pairs, axis=1)]
             
-            blocks.append({"type": "header", "text": {"type": "plain_text", "text": cfg["title"], "emoji": True}})
-            blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {df.shape[0]}"}]})
+            # Continue only if there are alerts left after filtering
+            if _df.empty:
+                continue
 
-            for _, row in df.iterrows():
-                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": cfg["template"].format(**row)}})
+            alerts_processed += _df.shape[0]
+            _df['samsara_temp_time'] = _df['samsara_temp_time'].dt.tz_convert(chicago_tz).dt.strftime(dt_format_str)
+            
+            blocks.append({"type": "header", "text": {"type": "plain_text", "text": alert_type, "emoji": True}})
+            blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {_df.shape[0]}"}]})
+
+            for _, row in _df.iterrows():
+                blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": message_processor(template.format(**row))}})
 
             blocks.append({"type": "divider"})
 
-    if not blocks:
-        return {"message": "No alerts to send today.", "slack_status": 200}
+    # If no alerts were processed after all filters, don't send a message
+    if not alerts_processed:
+        return {"message": "No new alerts to send.", "slack_status": 200}
+
+    # Remove the last divider for a cleaner look
+    if blocks[-1]["type"] == "divider":
+        blocks.pop()
 
     # Add a human-readable timestamp to the message
     current_time = datetime.now(chicago_tz).strftime(dt_format_str)
