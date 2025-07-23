@@ -106,7 +106,7 @@ def send_slack_temp_alerts():
 
     for alert_type in alerts_df['alert_type'].unique().tolist():
         template, message_processor = alert_templates[alert_type]
-        _df: pd.DataFrame = alerts_df[alerts_df['alert_type'] == alert_type].head(1)
+        _df: pd.DataFrame = alerts_df[alerts_df['alert_type'] == alert_type]
         
         if not _df.empty:
             _df = _df[~_df.apply(lambda row: (row['trailer_id'], row['trip_id']) in exclude_pairs, axis=1)]
