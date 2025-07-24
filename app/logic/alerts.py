@@ -30,7 +30,7 @@ alert_templates = {
         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Driver Set:* `{driver_set_temp}°`\n"
         "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Captured At:* `{samsara_temp_time}`"
     ), process_message_generic),
@@ -38,7 +38,7 @@ alert_templates = {
         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Driver Set:* `{driver_set_temp}°`\n"
         "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Captured At:* `{samsara_temp_time}`"
     ), process_message_generic),
@@ -47,7 +47,7 @@ alert_templates = {
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Severity:* `{priority_id} ({priority})`\n"
         "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{samsara_driver_set_point}°`\n"
+        "> *Driver Set:* `{driver_set_temp}°`\n"
         "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
         "> *Captured At:* `{samsara_temp_time}`"
@@ -56,8 +56,8 @@ alert_templates = {
         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-        "> *Actual Samsara Reefer Mode:* `{samsara_reefer_mode}`\n"
-        "> *Last Updated On:* `{samsara_reefer_mode_time}`\n"
+        "> *Actual Reefer Mode:* `{reefer_mode}`\n"
+        "> *Last Updated On:* `{samsara_temp_time}`\n"
         "> *Note:* `{remarks}`"
     ), process_dry_load_message),
     "‼️ Attention / Issue ‼️": ((
@@ -65,9 +65,11 @@ alert_templates = {
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Severity:* `{priority_id} ({priority})`\n"
         "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-        "> *Actual Samsara Reefer Mode:* `{samsara_reefer_mode} ‼️`\n"
+        "> *Actual Reefer Mode:* `{reefer_mode} ‼️`\n"
+        "> *Required Temp:* `{required_temp}°`\n"
+        "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-        "> *Last Updated On:* `{samsara_reefer_mode_time}`"
+        "> *Last Updated On:* `{samsara_temp_time}`"
     ), process_message_generic),
 }
 
