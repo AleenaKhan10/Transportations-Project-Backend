@@ -55,8 +55,8 @@ samsara_processed AS (
     null AS driverSetPoint,
     null AS driverSetPointInF,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
-    CAST(null AS STRING) AS actualReeferRunMode,
-    CAST(null AS TIMESTAMP) AS actualReeferRunModeTime,
+    CAST(null AS STRING) AS actualReeferMode,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTime,
     -- This is our master timestamp for ordering all events chronologically.
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', ambientTemperatureTime) AS time_axis
   FROM distinct_records
@@ -92,8 +92,8 @@ reefer_modes AS (
     null AS driverSetPointInF,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     -- This is the actual data point for this event.
-    reeferRunModeValue AS actualReeferRunMode,
-    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS actualReeferRunModeTime,
+    reeferRunModeValue AS actualReeferMode,
+    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS actualReeferModeTime,
     -- The event's own timestamp is used for the master time_axis.
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS time_axis
   FROM `bronze.samsara_trailer_stats`
@@ -127,8 +127,8 @@ setpoints AS (
     reeferSetPointTemperatureMilliCZone1Value AS driverSetPoint,
     ROUND(((reeferSetPointTemperatureMilliCZone1Value / 1000))*(9/5) + 32, 0) AS driverSetPointInF,
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferSetPointTemperatureMilliCZone1Time) AS driverSetPointTime,
-    CAST(null AS STRING) AS actualReeferRunMode,
-    CAST(null AS TIMESTAMP) AS actualReeferRunModeTime,
+    CAST(null AS STRING) AS actualReeferMode,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTime,
     -- The event's own timestamp is used for the master time_axis.
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferSetPointTemperatureMilliCZone1Time) AS time_axis
   FROM `bronze.samsara_trailer_stats`
@@ -156,13 +156,13 @@ unioned AS (
 final_merged AS (
   SELECT
     -- Select all columns except the temporary ones we used for filling.
-    * EXCEPT(driverSetPoint, driverSetPointInF, driverSetPointTime, actualReeferRunMode, actualReeferRunModeTime, time_axis),
+    * EXCEPT(driverSetPoint, driverSetPointInF, driverSetPointTime, actualReeferMode, actualReeferModeTime, time_axis),
     -- The LAST_VALUE function does the heavy lifting of our forward fill.
     LAST_VALUE(driverSetPoint IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPoint,
     LAST_VALUE(driverSetPointInF IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointInF,
     LAST_VALUE(driverSetPointTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointTime,
-    LAST_VALUE(actualReeferRunMode IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferRunMode,
-    LAST_VALUE(actualReeferRunModeTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferRunModeTime
+    LAST_VALUE(actualReeferMode IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferMode,
+    LAST_VALUE(actualReeferModeTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferModeTime
   FROM unioned
 )
 
