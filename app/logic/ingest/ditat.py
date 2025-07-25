@@ -10,7 +10,6 @@ def ingest_ditat_data():
     df["fromAddress"] = df["fromAddress"].apply(dump_json)
     df["toAddress"] = df["toAddress"].apply(dump_json)
     df["legToAddress"] = df["legToAddress"].apply(dump_json)
-    df["ingestedAt"] = datetime.datetime.now(tz=datetime.timezone.utc)
     df = df[
         [
             "tripSummaryKey", "updateCounter", "tripKey", "tripId", "status", "subStatus", "carrierKey", "carrierId", "primaryDriverKey", 
@@ -32,6 +31,7 @@ def ingest_ditat_data():
             "lastTripNote", "dispatchNote1", "dispatchNote2", "dispatchNote3", "dispatchNote4", "dispatchNote5",
         ]
     ]
+    df["ingestedAt"] = datetime.datetime.now(tz=datetime.timezone.utc)
     df.to_gbq(
         destination_table="bronze.ditat_full",
         project_id="agy-intelligence-hub",
