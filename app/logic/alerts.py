@@ -106,7 +106,10 @@ def send_slack_temp_alerts():
     # Keep track of how many alerts are actually processed
     alerts_processed = 0
 
-    for alert_type in alerts_df['alert_type'].unique().tolist():
+    # Get unique alert types in a sorted order
+    alerts_types: list[str] = alerts_df['alert_type'].sort_values(inplace=False).unique().tolist()
+    
+    for alert_type in alerts_types:
         template, message_processor = alert_templates[alert_type]
         _df: pd.DataFrame = alerts_df[alerts_df['alert_type'] == alert_type]
         

@@ -1,8 +1,24 @@
 CREATE OR REPLACE VIEW `agy-intelligence-hub.diamond.alerts` AS
 WITH ranked AS (
   SELECT 
-    * EXCEPT (samsara_driver_set_point, samsara_reefer_mode, samsara_temp_time),
+    * EXCEPT (samsara_driver_set_point, samsara_reefer_mode, reefer_mode, reefer_mode_id, samsara_temp_time),
     COALESCE(samsara_temp_time, ditat_temp_time) AS samsara_temp_time,
+    CASE 
+      WHEN reefer_mode = 'On' THEN 'On'
+      ELSE
+        CASE 
+          WHEN samsara_reefer_mode != 'Dry Load' THEN 'On'
+          ELSE 'Off'
+        END
+    END AS reefer_mode,
+    CASE 
+      WHEN reefer_mode = 'On' THEN 2
+      ELSE
+        CASE 
+          WHEN samsara_reefer_mode != 'Dry Load' THEN 2
+          ELSE 0
+        END
+    END AS reefer_mode_id,
     ROW_NUMBER() OVER (PARTITION BY trailer_id, trip_id ORDER BY COALESCE(samsara_temp_time, ditat_temp_time) DESC) AS rn
   FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
   -- WHERE samsara_temp IS NOT NULL
