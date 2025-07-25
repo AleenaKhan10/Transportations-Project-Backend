@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     DB_HOST: str | None = None
     DB_NAME: str
     
-    # Cloud Run specific settings for Database
+    # Cloud Run specific settings for Database. 
+    # For eg: `/cloudsql/agy-intelligence-hub:us-central1:agy-intelligence-hub-instance`
     INSTANCE_UNIX_SOCKET: str | None = None
     
     # Auth settings
