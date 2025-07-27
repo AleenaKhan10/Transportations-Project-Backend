@@ -20,7 +20,7 @@ WITH ranked AS (
         END
     END AS reefer_mode_id,
     ROW_NUMBER() OVER (PARTITION BY trailer_id, trip_id ORDER BY COALESCE(samsara_temp_time, ditat_temp_time) DESC) AS rn
-  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master`
+  FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master_view`
   -- WHERE samsara_temp IS NOT NULL
 ),
 classified AS (
