@@ -29,6 +29,20 @@ class Settings(BaseSettings):
     SLACK_BOT_TOKEN: str
     SLACK_CHANNEL: str
 
+
+    # VAPI settings
+    VAPI_API_KEY: str = ""
+    VAPI_ASSISTANT_ID: str = ""
+
+    # Application settings
+    PORT: int = 8000
+
+    # PCMiler settings
+    PCMILER_API_KEY: str = ""
+
+    # VAPI Phone Number ID (required for campaigns)
+    VAPI_PHONENUMBER_ID: str = ""
+
     class Config:
         env_file = ".env"
 

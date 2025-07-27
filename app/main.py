@@ -6,6 +6,9 @@ from services import (
     alert_router,
     drivers_router,
 )
+from services.vapi import router as vapi_router
+from services.reports import router as reports_router
+from services.pcmiler import router as pcmiler_router
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -21,6 +24,9 @@ app.include_router(trip_router, tags=["trips"])
 app.include_router(ingest_router, tags=["ingest"])
 app.include_router(alert_router, tags=["alerts"])
 app.include_router(drivers_router, tags=["drivers"])
+app.include_router(vapi_router, tags=["vapi"])
+app.include_router(reports_router, tags=["reports"])
+app.include_router(pcmiler_router, tags=["pcmiler"])
 
 if __name__ == "__main__":
     import uvicorn
