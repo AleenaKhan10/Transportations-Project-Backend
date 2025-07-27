@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from services import (
     auth_router,
     trip_router,
@@ -16,6 +17,14 @@ def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
 
 app = FastAPI(title="AGY Intelligence Hub", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_event_handler("startup", create_db_and_tables)
 
