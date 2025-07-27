@@ -1,34 +1,18 @@
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from helpers import logger
 from logic.auth.security import get_current_user
 from models.drivers import Driver
 from models.driver_reports import DriverReport
+from models.vapi import VAPICallRequest, DriverCallInsightsUpdate
 from utils.vapi_client import vapi_client
 
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
-class VAPICallRequest(BaseModel):
-    driverIds: List[str]
-
-
-class DriverCallInsightsUpdate(BaseModel):
-    driverId: str
-    currentLocation: Optional[str] = None
-    milesRemaining: Optional[float] = None
-    eta: Optional[str] = None
-    onTimeStatus: Optional[str] = None
-    delayReason: Optional[str] = None
-    driverMood: Optional[str] = None
-    preferredCallbackTime: Optional[str] = None
-    wantsTextInstead: Optional[bool] = None
-    issueReported: Optional[str] = None
-    recordingUrl: Optional[str] = None
 
 
 @router.post("/vapi-call/{driver_id}")
