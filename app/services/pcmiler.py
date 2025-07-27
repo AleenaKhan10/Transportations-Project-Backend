@@ -1,21 +1,17 @@
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
 import httpx
 
 from helpers import logger
 from logic.auth.security import get_current_user
+from models.pcmiler import ETARequest
 from config import settings
 
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
-class ETARequest(BaseModel):
-    origin: str
-    destination: str
-    departureTime: Optional[str] = None
 
 
 @router.post("/eta")

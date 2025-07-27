@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 
 from sqlmodel import SQLModel, Field, Session, select, text
+from pydantic import BaseModel
 
 from db import engine
 from helpers import logger
@@ -331,3 +332,28 @@ class DriverCallUpdate(SQLModel):
 #             for update in updates
 #             if isinstance(update, (dict, cls))
 #         ]
+
+
+class CreateDriverRequest(BaseModel):
+    firstName: str
+    lastName: str
+    phoneNumber: str
+    status: str = "Active"
+    truckId: str = None
+    email: str = None
+    hiredOn: str = None
+    companyId: str = "COMP_001"
+    dispatcher: str = None
+    firstLanguage: str = "English"
+    secondLanguage: str = None
+    globalDnd: bool = False
+    safetyCall: bool = True
+    safetyMessage: bool = True
+    hosSupport: bool = True
+    maintainanceCall: bool = True
+    maintainanceMessage: bool = True
+    dispatchCall: bool = True
+    dispatchMessage: bool = True
+    accountCall: bool = True
+    accountMessage: bool = True
+    telegramId: str = None
