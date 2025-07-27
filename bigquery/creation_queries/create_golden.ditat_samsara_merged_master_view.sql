@@ -115,6 +115,8 @@ ditat_events_with_trip_starts AS (
       ELSE 0
     END AS is_new_trip_start
   FROM ditat_by_trip
+  WHERE 
+    ditat_by_trip.temp_updated_on != ditat_by_trip.next_temp_updated_on -- This ensures we only take those entries where there is a change
 ),
 
 -- Step 2: Prepare Samsara Events
