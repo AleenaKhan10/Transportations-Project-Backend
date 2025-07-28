@@ -16,16 +16,16 @@ async def get_all_driver_reports():
     """
     try:
         reports = DriverReport.get_all(limit=5000)
-        
+
         return {
             "status": 200,
             "message": "Driver reports fetched successfully",
             "data": [report.model_dump() for report in reports],
         }
-        
+
     except Exception as error:
         logger.error(f"Error fetching reports: {str(error)}")
-        
+
         raise HTTPException(
             status_code=500,
             detail={
@@ -44,12 +44,12 @@ async def get_driver_morning_reports():
     """
     try:
         morning_reports = DriverMorningReport.get_all(limit=5000)
-        
+
         # Get associated driver information for each report
         reports_with_drivers = []
         for report in morning_reports:
             report_dict = report.model_dump()
-            
+
             # Get associated driver
             if report.driverIdPrimary:
                 driver = Driver.get_by_id(report.driverIdPrimary)
@@ -59,19 +59,19 @@ async def get_driver_morning_reports():
                     report_dict["driver"] = None
             else:
                 report_dict["driver"] = None
-                
+
             reports_with_drivers.append(report_dict)
-        
+
         return {
             "status": 200,
             "count": len(reports_with_drivers),
             "message": "Morning Reports fetched successfully",
             "data": reports_with_drivers,
         }
-        
+
     except Exception as error:
         logger.error(f"Error fetching morning reports: {str(error)}")
-        
+
         raise HTTPException(
             status_code=500,
             detail={
