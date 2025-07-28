@@ -63,6 +63,7 @@ alert_templates = {
             ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
             "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
             "> *Actual Reefer Mode:* `{reefer_mode}`\n"
+            "> *Samsara Temp:* `{samsara_temp}°`\n"
             "> *Last Updated On:* `{samsara_temp_time}`\n"
             "> *Note:* `{remarks}`"
         ), process_dry_load_message),
@@ -100,6 +101,7 @@ alert_templates = {
             ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
             "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
             "> *Actual Reefer Mode:* `{reefer_mode}`\n"
+            "> *Samsara Temp:* `{samsara_temp}°`\n"
             "> *Last Updated On:* `{samsara_temp_time}`\n"
             "> *Note:* `{remarks}`"
         ), process_dry_load_message),
