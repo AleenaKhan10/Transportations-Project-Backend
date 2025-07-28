@@ -126,7 +126,7 @@ def send_slack_temp_alerts():
     exclude_pairs = set((f.trailer_id, f.trip_id) for f in filters)
     
     query = f"""
-      SELECT * FROM agy-intelligence-hub.diamond.alerts
+      SELECT * FROM `agy-intelligence-hub.diamond.get_master_with_alerts`(TRUE)
       WHERE 
         samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {INTERVAL} {INTERVAL_UNIT})
       AND 
