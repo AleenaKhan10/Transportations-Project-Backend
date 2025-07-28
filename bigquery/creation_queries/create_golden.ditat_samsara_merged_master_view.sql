@@ -240,28 +240,10 @@ final_enriched_timeline AS (
     LAST_VALUE(ditat_temp_time IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS ditat_temp_time,
     samsara_temp,
     samsara_temp_time,
-    -- NOTE: These 4 fields can be turned on once the backward compatible conditions are no longer required
-    -- samsara_reefer_mode,
-    -- samsara_reefer_mode_time,
-    -- samsara_driver_set_point,
-    -- samsara_driver_set_point_time,
-    -- NOTE: These 4 conditions are kept for backward compatibility. Once, the need is over, these can be removed.
-    CASE 
-      WHEN samsara_reefer_mode IS NULL THEN 'Dry Load'
-      ELSE samsara_reefer_mode
-      END AS samsara_reefer_mode,
-    CASE 
-      WHEN samsara_reefer_mode_time IS NULL THEN samsara_temp_time
-      ELSE samsara_reefer_mode_time
-      END AS samsara_reefer_mode_time,
-    CASE 
-      WHEN samsara_driver_set_point IS NULL THEN 99
-      ELSE samsara_driver_set_point
-      END AS samsara_driver_set_point,
-    CASE 
-      WHEN samsara_driver_set_point_time IS NULL THEN samsara_temp_time
-      ELSE samsara_driver_set_point_time
-      END AS samsara_driver_set_point_time,
+    samsara_reefer_mode,
+    samsara_reefer_mode_time,
+    samsara_driver_set_point,
+    samsara_driver_set_point_time,
     LAST_VALUE(trip_start_time IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS trip_start_time,
     LAST_VALUE(trip_end_time IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS trip_end_time,
     LAST_VALUE(leg_start_time IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS leg_start_time,
@@ -311,7 +293,7 @@ final_enriched_timeline AS (
 -- This final SELECT statement filters the enriched timeline to only include Samsara temperature events
 -- that fall within the start and end times of a trip. This ensures that the final table only contains relevant data.
 SELECT 
-  *  
+  * 
 FROM final_enriched_timeline
 WHERE
   samsara_temp_time BETWEEN trip_start_time AND trip_end_time

@@ -5,18 +5,10 @@ WITH base_data AS (
     COALESCE(samsara_temp_time, ditat_temp_time) AS samsara_temp_time,
     samsara_driver_set_point AS driver_set_temp, -- NOTE: renaming to match Ditat's naming convention
     CASE 
-      WHEN reefer_mode = 'On' THEN 'On'
+      WHEN samsara_reefer_mode IS NOT NULL THEN 2
       ELSE
         CASE 
-          WHEN samsara_reefer_mode != 'Dry Load' THEN 'On'
-          ELSE 'Off'
-        END
-    END AS reefer_mode, -- NOTE: renaming to match Ditat's naming convention
-    CASE 
-      WHEN reefer_mode = 'On' THEN 2
-      ELSE
-        CASE 
-          WHEN samsara_reefer_mode != 'Dry Load' THEN 2
+          WHEN reefer_mode_id IN (1, 2) THEN 2
           ELSE 0
         END
     END AS reefer_mode_id -- NOTE: renaming to match Ditat's naming convention
@@ -49,7 +41,7 @@ classified AS (
     status_id, 
     priority, 
     priority_id, 
-    reefer_mode, 
+    CASE WHEN reefer_mode_id = 2 THEN 'On' ELSE 'Off' END AS reefer_mode, 
     reefer_mode_id,
     required_reefer_mode,
     required_reefer_mode_id,
@@ -59,14 +51,13 @@ classified AS (
     samsara_temp,
     samsara_temp_time,
     ABS(ROUND(required_temp - samsara_temp, 3)) AS temp_diff,
-    -- DATETIME(samsara_temp_time, 'America/Chicago') AS samsara_temp_time_cdt,
     CASE 
       WHEN required_reefer_mode_id = 0 THEN 'ℹ️ Dry Load'
       WHEN ((leg_id = 1 AND status_id = 3) OR (leg_id > 1 AND status_id NOT IN (0, 4))) AND samsara_temp IS NOT NULL THEN 
         CASE 
           WHEN required_temp = 99 THEN '🔥 99°F Required Temp'
           WHEN required_temp != driver_set_temp 
-            AND driver_set_temp != 0
+            AND driver_set_temp IS NOT NULL
             THEN '⚠️ Driver Setpoint Mismatch'
           WHEN 
             ABS(samsara_temp - required_temp) > max_allowed_deviation 
