@@ -2,9 +2,12 @@ import datetime
 
 import numpy as np
 import pandas as pd
+import pandas_gbq as pdg
+
 from config import settings
 from helpers.utils import dump_json
 from providers.samsara import SamsaraAPI
+from helpers.pandas_utils import clean_column_names, find_python_types
 
 
 TAG_IDS = [107382]
@@ -52,12 +55,17 @@ def ingest_trailer_temp_data(ingested_at: datetime.datetime | None = None):
         ]
     ]
     merged_df['ingestedAt'] = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
-    merged_df.to_gbq(
+    
+    if merged_df.empty:
+        return "no_data"
+    
+    pdg.to_gbq(
+        dataframe=merged_df,
         destination_table="bronze.samsara_full",
         project_id="agy-intelligence-hub",
         if_exists="append",
     )
-    return {"status": "success"}
+    return "success"
 
 
 def ingest_trailer_stats_data(ingested_at: datetime.datetime | None = None):
@@ -89,9 +97,51 @@ def ingest_trailer_stats_data(ingested_at: datetime.datetime | None = None):
     stats_df = stats_df.replace({np.nan: None}).reset_index(drop=True)
 
     stats_df["ingestedAt"] = ingested_at
-    stats_df.to_gbq(
+    
+    if stats_df.empty:
+        return "no_data"
+    
+    pdg.to_gbq(
+        dataframe=stats_df,
         destination_table="bronze.samsara_trailer_stats",
         project_id="agy-intelligence-hub",
         if_exists="append",
     )
-    return {"status": "success"}
+    return "success"
+
+def ingest_detailed_trailer_stats_data(
+    ingested_at: datetime.datetime | None = None,
+    start_time: datetime.datetime | None = None,
+    end_time: datetime.datetime | None = None,
+):
+    ingested_at = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
+    
+    start_time = start_time or ingested_at - datetime.timedelta(minutes=1)
+    end_time = end_time or ingested_at
+    
+    df = samsara_api.get_all_stats_in_timeframe(start_time=start_time, end_time=end_time)
+    
+    # Clean column names
+    df = clean_column_names(df, replacements={"ReeferStats.": ""})
+
+    # Replace NaN values with None
+    df = df.replace({np.nan: None}).reset_index(drop=True)
+
+    # Convert column types to BigQuery compatible types
+    for col, types in find_python_types(df).items():
+        try:
+            df[col] = df[col].apply(types.most_common_type.bqtype_convertor)
+        except Exception:
+            df[col] = df[col].astype(str, errors="ignore")
+
+    if df.empty:
+        return "no_data"
+    
+    df["ingestedAt"] = ingested_at
+    pdg.to_gbq(
+        dataframe=df,
+        destination_table="bronze.samsara_detailed_trailer_stats",
+        project_id="agy-intelligence-hub",
+        if_exists="append",
+    )
+    return "success"

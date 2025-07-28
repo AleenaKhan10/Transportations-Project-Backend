@@ -1,4 +1,7 @@
 import datetime
+
+import pandas_gbq as pdg
+
 from config import settings
 from helpers.utils import dump_json
 from providers.ditat import DitatAPI
@@ -31,10 +34,14 @@ def ingest_ditat_data():
             "lastTripNote", "dispatchNote1", "dispatchNote2", "dispatchNote3", "dispatchNote4", "dispatchNote5",
         ]
     ]
+    if df.empty:
+        return "no_data"
+    
     df["ingestedAt"] = datetime.datetime.now(tz=datetime.timezone.utc)
-    df.to_gbq(
+    pdg.to_gbq(
+        dataframe=df,
         destination_table="bronze.ditat_full",
         project_id="agy-intelligence-hub",
         if_exists="append" or "replace",
     )
-    return {"status": "success"} 
+    return "success"

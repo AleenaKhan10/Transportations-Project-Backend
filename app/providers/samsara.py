@@ -1,8 +1,11 @@
 import logging
 from uuid import UUID
+from datetime import datetime
 from typing import Optional, Union, Dict, Any, List, Tuple
+
 import requests
 import pandas as pd
+
 from helpers.utils import chunkify, run_parallel_exec_but_return_in_order
 
 
@@ -291,6 +294,85 @@ class SamsaraAPI:
             df, pagination = self.get_stats(
                 tag_ids=tag_ids, types=types, after=after, json_normalize=json_normalize
             )
+
+            if not df.empty:
+                all_stats.append(df)
+
+            if not pagination.get("hasNextPage"):
+                break
+
+            after = pagination.get("endCursor")
+
+        return pd.concat(all_stats, ignore_index=True) if all_stats else pd.DataFrame()
+
+    def get_stats_in_timeframe(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        after: Optional[Union[str, UUID]] = None,
+    ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Fetches trailer statistics from the Samsara API in a given timeframe.
+
+        Args:
+            start_time: Start of the timeframe
+            end_time: End of the timeframe
+            after: Optional cursor for pagination
+
+        Returns:
+            tuple: (DataFrame of trailer statistics in the timeframe, pagination dictionary)
+
+        Raises:
+            SamsaraAPIException: If no data is found in the response.
+        
+        Reference:
+            https://developers.samsara.com/reference/v1getassetsreefers
+        """
+        params = {
+            "startMs": int(start_time.timestamp() * 1000),
+            "endMs": int(end_time.timestamp() * 1000),
+        }
+        
+        if after:
+            params["after"] = str(after)
+
+        data = self._make_request("GET", "/v1/fleet/assets/reefers", params=params)
+        
+        if "data" not in data:
+            raise SamsaraAPIException(
+                f"No trailers found in the response. Response: {data}"
+            )
+        
+        df = pd.json_normalize(data["data"])
+        return df, data.get("pagination", {})
+    
+    def get_all_stats_in_timeframe(self, start_time: datetime, end_time: datetime):
+        """
+        Fetches all trailer statistics from the Samsara API in a given timeframe, handling pagination automatically.
+
+        Args:
+            start_time: Start of the timeframe
+            end_time: End of the timeframe
+
+        Returns:
+            pd.DataFrame: DataFrame containing all trailer statistics in the timeframe
+        
+        Reference:
+            https://developers.samsara.com/reference/v1getassetsreefers
+        """
+        all_stats = []
+        after = None
+
+        while True:
+            try:
+                df, pagination = self.get_stats_in_timeframe(start_time, end_time, after)
+            except Exception:
+                logger.error(
+                    f"Failed to fetch stats in timeframe {start_time} to {end_time} from Samsara after {after}",
+                    exc_info=True,
+                )
+                df, pagination = pd.DataFrame(), {}
+                break
 
             if not df.empty:
                 all_stats.append(df)
