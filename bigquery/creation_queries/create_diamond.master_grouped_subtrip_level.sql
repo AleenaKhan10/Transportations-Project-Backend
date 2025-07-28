@@ -1,14 +1,5 @@
 CREATE OR REPLACE VIEW `agy-intelligence-hub.diamond.master_grouped_subtrip_level` AS
-WITH filtered AS (
-  SELECT *
-  FROM `golden.ditat_samsara_merged_master` s
-  WHERE
-    s.samsara_temp IS NOT NULL
-    AND s.required_temp IS NOT NULL
-    AND s.required_temp != 0 -- Exclude records where temp control is not required
-    AND s.required_temp != 99 -- -- Exclude records with 99F as these require manual inspection
-),
-grouped AS (
+WITH grouped AS (
   SELECT
     trailer_id,
     trip_id,
@@ -24,7 +15,9 @@ grouped AS (
       required_temp,
       driver_set_temp,
       samsara_temp,
-      samsara_temp_time
+      samsara_temp_time,
+      alert_type,
+      remarks
     ) ORDER BY samsara_temp_time) as t,
     trip_start_time,
     trip_end_time,
@@ -33,7 +26,7 @@ grouped AS (
     sub_leg_start_time,
     sub_leg_end_time
   FROM
-    filtered
+    `agy-intelligence-hub.diamond.get_master_with_alerts`(FALSE)
   GROUP BY
     trailer_id,
     leg_id,

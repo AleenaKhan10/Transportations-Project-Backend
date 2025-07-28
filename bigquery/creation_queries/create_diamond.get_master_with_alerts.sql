@@ -1,8 +1,9 @@
-CREATE OR REPLACE VIEW `agy-intelligence-hub.diamond.alerts` AS
-WITH ranked AS (
+CREATE OR REPLACE TABLE FUNCTION `agy-intelligence-hub.diamond.get_master_with_alerts`(only_latest BOOL) AS
+WITH base_data AS (
   SELECT 
-    * EXCEPT (samsara_driver_set_point, samsara_reefer_mode, reefer_mode, reefer_mode_id, samsara_temp_time),
+    * EXCEPT (samsara_driver_set_point, samsara_reefer_mode, reefer_mode, reefer_mode_id, samsara_temp_time, driver_set_temp),
     COALESCE(samsara_temp_time, ditat_temp_time) AS samsara_temp_time,
+    samsara_driver_set_point AS driver_set_temp, -- NOTE: renaming to match Ditat's naming convention
     CASE 
       WHEN reefer_mode = 'On' THEN 'On'
       ELSE
@@ -10,7 +11,7 @@ WITH ranked AS (
           WHEN samsara_reefer_mode != 'Dry Load' THEN 'On'
           ELSE 'Off'
         END
-    END AS reefer_mode,
+    END AS reefer_mode, -- NOTE: renaming to match Ditat's naming convention
     CASE 
       WHEN reefer_mode = 'On' THEN 2
       ELSE
@@ -18,22 +19,40 @@ WITH ranked AS (
           WHEN samsara_reefer_mode != 'Dry Load' THEN 2
           ELSE 0
         END
-    END AS reefer_mode_id,
-    ROW_NUMBER() OVER (PARTITION BY trailer_id, trip_id ORDER BY COALESCE(samsara_temp_time, ditat_temp_time) DESC) AS rn
+    END AS reefer_mode_id -- NOTE: renaming to match Ditat's naming convention
   FROM `agy-intelligence-hub.golden.ditat_samsara_merged_master_view`
   -- WHERE samsara_temp IS NOT NULL
+),
+ranked AS (
+  SELECT 
+    *,
+    ROW_NUMBER() OVER (PARTITION BY trailer_id, trip_id ORDER BY samsara_temp_time DESC) AS rn
+  FROM base_data
+),
+filtered AS (
+  SELECT *
+  FROM ranked
+  WHERE 
+    CASE 
+      WHEN only_latest THEN rn = 1
+      ELSE TRUE
+    END
 ),
 classified AS (
   SELECT 
     trailer_id, 
     trip_id, 
     leg_id, 
+    driver_id, 
     truck_id, 
     status, 
-    reefer_mode, 
-    required_reefer_mode,
-    priority_id, 
+    status_id, 
     priority, 
+    priority_id, 
+    reefer_mode, 
+    reefer_mode_id,
+    required_reefer_mode,
+    required_reefer_mode_id,
     max_allowed_deviation,
     driver_set_temp, 
     required_temp, 
@@ -56,14 +75,20 @@ classified AS (
             AND reefer_mode_id = 0 
             -- AND ABS(samsara_temp - required_temp) > max_allowed_deviation -- NOTE: even if the temp is within limit, keeping the reefer off might be problematic
             THEN '‼️ Attention / Issue ‼️'
-          ELSE 'Ignore'
+          ELSE NULL
         END
-      ELSE 'Ignore'
+      ELSE NULL
     END AS alert_type,
     CASE 
       WHEN required_reefer_mode_id = 0 AND reefer_mode_id != 0 THEN 'Reefer is ON'
     END AS remarks,
-  FROM ranked
-  WHERE rn = 1 
+    trip_start_time,
+    trip_end_time,
+    leg_start_time,
+    leg_end_time,
+    sub_leg_start_time,
+    sub_leg_end_time,
+    rn  -- Include row number for reference if needed
+  FROM filtered
 )
-SELECT * FROM classified
+SELECT * EXCEPT(rn) FROM classified
