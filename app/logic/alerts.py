@@ -26,19 +26,10 @@ def process_dry_load_message(message: str):
 
 # A dictionary of readable and visually appealing set of templates
 alert_templates = {
-    "⚠️ Driver Setpoint Mismatch": ((
-        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-        "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{driver_set_temp}°`\n"
-        "> *Samsara Temp:* `{samsara_temp}°`\n"
-        "> *Captured At:* `{samsara_temp_time}`"
-    ), process_message_generic),
     "🔥 99°F Required Temp": ((
         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{driver_set_temp}°`\n"
         "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Captured At:* `{samsara_temp_time}`"
     ), process_message_generic),
@@ -47,7 +38,6 @@ alert_templates = {
         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
         "> *Severity:* `{priority_id} ({priority})`\n"
         "> *Required Temp:* `{required_temp}°`\n"
-        "> *Driver Set:* `{driver_set_temp}°`\n"
         "> *Samsara Temp:* `{samsara_temp}°`\n"
         "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
         "> *Captured At:* `{samsara_temp_time}`"
@@ -60,17 +50,6 @@ alert_templates = {
         "> *Last Updated On:* `{samsara_temp_time}`\n"
         "> *Note:* `{remarks}`"
     ), process_dry_load_message),
-    "‼️ Attention / Issue ‼️": ((
-        "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-        ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-        "> *Severity:* `{priority_id} ({priority})`\n"
-        "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-        "> *Actual Reefer Mode:* `{reefer_mode} ‼️`\n"
-        "> *Required Temp:* `{required_temp}°`\n"
-        "> *Samsara Temp:* `{samsara_temp}°`\n"
-        "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-        "> *Last Updated On:* `{samsara_temp_time}`"
-    ), process_message_generic),
 }
 
 def get_alert_filters():
@@ -107,7 +86,7 @@ def send_slack_temp_alerts():
     alerts_processed = 0
 
     # Get unique alert types in a sorted order
-    alerts_types: list[str] = alerts_df['alert_type'].sort_values(inplace=False).unique().tolist()
+    alerts_types: list[str] = alert_templates.keys()
     
     for alert_type in alerts_types:
         template, message_processor = alert_templates[alert_type]
