@@ -42,8 +42,8 @@ class DriverReport(SQLModel, table=True):
     slackPosted: Optional[str] = None
     callStatus: Optional[str] = None
     reportDate: Optional[str] = None
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    createdAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updatedAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
     @classmethod
     def get_session(cls) -> Session:
@@ -55,7 +55,7 @@ class DriverReport(SQLModel, table=True):
         """Get all driver reports"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).limit(limit).order_by(cls.created_at.desc())
+                statement = select(cls).limit(limit).order_by(cls.createdAt.desc())
                 reports = session.exec(statement).all()
                 return list(reports)
             except Exception as err:
@@ -113,8 +113,8 @@ class DriverMorningReport(SQLModel, table=True):
     ETA_Notes_1: Optional[str] = None
     workflowTrigger: Optional[str] = None
     loadGroup: Optional[str] = None
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    createdAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updatedAt: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
     @classmethod
     def get_session(cls) -> Session:
@@ -126,7 +126,7 @@ class DriverMorningReport(SQLModel, table=True):
         """Get all morning reports"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).limit(limit).order_by(cls.created_at.desc())
+                statement = select(cls).limit(limit).order_by(cls.createdAt.desc())
                 reports = session.exec(statement).all()
                 return list(reports)
             except Exception as err:
