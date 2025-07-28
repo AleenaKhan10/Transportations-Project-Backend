@@ -41,17 +41,46 @@ class VAPIClient:
                 if not all(key in driver for key in ['phoneNumber', 'firstName', 'lastName']):
                     raise ValueError("Driver must have phoneNumber, firstName, and lastName")
 
+                # Extract vapi_data if present
+                vapi_data = driver.get('vapi_data', {})
+                
+                # Build variable values, prioritizing vapi_data over driver data
+                variable_values = {
+                    "driverFirstName": driver['firstName'],
+                    "driverId": driver.get('id') or driver.get('driverId') or f"driver_{hash(str(driver))}",
+                    "currentLocation": vapi_data.get('currentLocation') or driver.get('currentLocation', 'Los Angeles, CA'),
+                    "milesRemaining": str(vapi_data.get('milesLeft') or driver.get('milesRemaining', '100')),
+                    "deliveryType": vapi_data.get('deliveryType') or driver.get('deliveryType', ''),
+                }
+                
+                # Add all additional vapi_data fields if present
+                if vapi_data:
+                    additional_fields = {
+                        "tripId": vapi_data.get('tripId'),
+                        "driverName": vapi_data.get('driverName'),
+                        "speed": vapi_data.get('speed'),
+                        "eta": vapi_data.get('eta'),
+                        "deliveryTime": vapi_data.get('deliveryTime'),
+                        "destination": vapi_data.get('destination'),
+                        "loadingLocation": vapi_data.get('loadingLocation'),
+                        "onTimeStatus": vapi_data.get('onTimeStatus'),
+                        "delayReason": vapi_data.get('delayReason'),
+                        "loadGroup": vapi_data.get('loadGroup'),
+                        "tripStatus": vapi_data.get('tripStatus'),
+                        "subStatus": vapi_data.get('subStatus'),
+                        "driverFeeling": vapi_data.get('driverFeeling'),
+                        "pickupTime": vapi_data.get('pickupTime'),
+                        "lateAfterTime": vapi_data.get('lateAfterTime'),
+                        "additionalNotes": vapi_data.get('additionalNotes'),
+                    }
+                    # Add only non-None values
+                    variable_values.update({k: v for k, v in additional_fields.items() if v is not None})
+                
                 customers.append({
                     "number": "+12192002824",  # Using hardcoded number as per original
                     "name": f"{driver['firstName']} {driver['lastName']}",
                     "assistantOverrides": {
-                        "variableValues": {
-                            "driverFirstName": driver['firstName'],
-                            "driverId": driver.get('id') or driver.get('driverId') or f"driver_{hash(str(driver))}",
-                            "currentLocation": driver.get('currentLocation', 'Los Angeles, CA'),
-                            "milesRemaining": str(driver.get('milesRemaining', '100')),
-                            "deliveryType": driver.get('deliveryType', 'pickup'),
-                        },
+                        "variableValues": variable_values,
                     },
                 })
 

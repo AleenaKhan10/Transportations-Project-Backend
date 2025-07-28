@@ -6,7 +6,7 @@ from helpers import logger
 from logic.auth.security import get_current_user
 from models.drivers import Driver
 from models.driver_reports import DriverReport
-from models.vapi import VAPICallRequest, DriverCallInsightsUpdate
+from models.vapi import VAPICallRequest, DriverCallInsightsUpdate, VAPIData
 from utils.vapi_client import vapi_client
 
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 
 
 @router.post("/vapi-call/{driver_id}")
-async def make_vapi_call(driver_id: str):
+async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
     """
     Initiates a VAPI AI-powered call to a specific driver
     """
@@ -58,6 +58,12 @@ async def make_vapi_call(driver_id: str):
 
         # Convert driver to dict for VAPI client
         driver_dict = driver.model_dump()
+        
+        # If body data is provided, add it to the driver dict
+        if body:
+            vapi_data = body.model_dump(exclude_none=True)
+            driver_dict.update({"vapi_data": vapi_data})
+            logger.info(f"📋 Using provided VAPI data: {vapi_data}")
 
         # Make VAPI API call with driver data
         vapi_result = await vapi_client.create_vapi_call(driver_dict)
