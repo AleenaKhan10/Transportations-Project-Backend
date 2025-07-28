@@ -27,7 +27,8 @@ class Settings(BaseSettings):
 
     # Slack Bot settings
     SLACK_BOT_TOKEN: str
-    SLACK_CHANNEL: str
+    ALERTS_APPROACH1_SLACK_CHANNEL: str = "#ai-temp-testing"
+    ALERTS_APPROACH2_SLACK_CHANNEL: str = "#ai-temp-alerts"
 
     class Config:
         env_file = ".env"
