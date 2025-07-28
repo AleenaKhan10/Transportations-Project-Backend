@@ -88,6 +88,18 @@ class Driver(SQLModel, table=True):
                 return None
     
     @classmethod
+    def get_by_ids(cls, driver_ids: List[str]) -> List["Driver"]:
+        """Get multiple drivers by their IDs in a single query"""
+        with cls.get_session() as session:
+            try:
+                statement = select(cls).where(cls.driverId.in_(driver_ids))
+                return list(session.exec(statement).all())
+                
+            except Exception as err:
+                logger.error(f'Database query error: {err}', exc_info=True)
+                return []
+    
+    @classmethod
     def bulk_update_calling_info(cls, updates: List["DriverCallUpdate"]) -> None:
         """Bulk update driver calling information"""
         logger.info('setDriverCalling request reach out to correct service')

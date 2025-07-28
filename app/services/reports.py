@@ -45,18 +45,25 @@ async def get_driver_morning_reports():
     try:
         morning_reports = DriverMorningReport.get_all(limit=5000)
 
+        # Extract all unique driver IDs
+        driver_ids = [report.driverIdPrimary for report in morning_reports if report.driverIdPrimary]
+        
+        # Bulk fetch all drivers in a single query
+        drivers = []
+        if driver_ids:
+            drivers = Driver.get_by_ids(driver_ids)
+        
+        # Create a dictionary for O(1) lookup
+        driver_map = {driver.driverId: driver for driver in drivers}
+
         # Get associated driver information for each report
         reports_with_drivers = []
         for report in morning_reports:
             report_dict = report.model_dump()
 
-            # Get associated driver
-            if report.driverIdPrimary:
-                driver = Driver.get_by_id(report.driverIdPrimary)
-                if driver:
-                    report_dict["driver"] = driver.model_dump()
-                else:
-                    report_dict["driver"] = None
+            # Get associated driver from map
+            if report.driverIdPrimary and report.driverIdPrimary in driver_map:
+                report_dict["driver"] = driver_map[report.driverIdPrimary].model_dump()
             else:
                 report_dict["driver"] = None
 
