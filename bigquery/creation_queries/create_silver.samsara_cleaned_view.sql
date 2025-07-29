@@ -60,13 +60,50 @@ samsara_processed AS (
     CAST(null AS TIMESTAMP) AS driverSetPointTimeBkp,
     CAST(null AS STRING) AS actualReeferMode,
     CAST(null AS TIMESTAMP) AS actualReeferModeTime,
+    CAST(null AS STRING) AS actualReeferModeBkp,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTimeBkp,
     -- Master timestamp for chronological ordering
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', ambientTemperatureTime) AS time_axis
   FROM distinct_records
 ),
 
--- Step 3: Extract reefer run mode events
--- Structure run mode changes to match sensor data column layout for union compatibility
+-- Step 3: Extract reefer modes (backup source)
+-- Reefer modes from gettrailerstatsfeed endpoint - less reliable source
+reefer_modes_backup AS (
+  SELECT DISTINCT
+    null AS sensorId,
+    CAST(null AS STRING) AS sensorName,
+    null AS ambientTemperature,
+    null AS ambientTemperatureInF,
+    CAST(null AS TIMESTAMP) AS ambientTemperatureTime,
+    CAST(null AS STRING) AS vehicleId,
+    CAST(null AS STRING) AS trailerId,
+    name AS trailerName,
+    CAST(null AS STRING) AS tagId,
+    CAST(null AS STRING) AS tagName,
+    CAST(null AS STRING) AS installedGatewayModel,
+    CAST(null AS STRING) AS installedGatewaySerial,
+    CAST(null AS STRING) AS installedGatewaySerialAlphaNum,
+    CAST(null AS STRING) AS installedGatewayVIN,
+    CAST(null AS BOOL) AS enabledForMobile,
+    CAST(null AS STRING) AS notes,
+    CAST(null AS STRING) AS licensePlate,
+    ingestedAt,
+    CAST(null AS STRING) AS trailerSerialNumber,
+    null AS driverSetPoint,
+    CAST(null AS TIMESTAMP) AS driverSetPointTime,
+    null AS driverSetPointBkp,
+    CAST(null AS TIMESTAMP) AS driverSetPointTimeBkp,
+    CAST(null AS STRING) AS actualReeferMode,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTime,
+    reeferRunModeValue AS actualReeferModeBkp,
+    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS actualReeferModeBkpTime,
+    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS time_axis
+  FROM `bronze.samsara_trailer_stats`
+),
+
+-- Extract Reefer modes (primary source)
+-- Reefer modes from v1getassetsreefers endpoint - more reliable source
 reefer_modes AS (
   SELECT DISTINCT
     null AS sensorId,
@@ -92,10 +129,21 @@ reefer_modes AS (
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     null AS driverSetPointBkp,
     CAST(null AS TIMESTAMP) AS driverSetPointTimeBkp,
-    reeferRunModeValue AS actualReeferMode,
-    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS actualReeferModeTime,
-    PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferRunModeTime) AS time_axis
-  FROM `bronze.samsara_trailer_stats`
+    CASE
+      WHEN CONTAINS_SUBSTR(JSON_EXTRACT_SCALAR(rmode_item, '$.status'), 'Continuous') THEN 'Continuous'
+      WHEN CONTAINS_SUBSTR(JSON_EXTRACT_SCALAR(rmode_item, '$.status'), 'Start/Stop') THEN 'Start/Stop'
+      WHEN JSON_EXTRACT_SCALAR(rmode_item, '$.status') = 'Off' THEN 'Off'
+      WHEN REGEXP_CONTAINS(JSON_EXTRACT_SCALAR(rmode_item, '$.status'), '^Active$') THEN 'Continuous'
+      ELSE null
+    END AS actualReeferMode,
+    TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(rmode_item, '$.changedAtMs') AS INT64)) AS actualReeferModeTime,
+    CAST(null AS STRING) AS actualReeferModeBkp,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTimeBkp,
+    TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(rmode_item, '$.changedAtMs') AS INT64)) AS time_axis
+  FROM
+    `bronze.samsara_detailed_trailer_stats`,
+    UNNEST(JSON_EXTRACT_ARRAY(powerStatus)) AS rmode_item
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY trailerName, actualReeferMode, actualReeferModeTime ORDER BY ingestedAt DESC) = 1
 ),
 
 -- Step 4: Extract setpoint events (backup source)
@@ -127,6 +175,8 @@ setpoints_backup AS (
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferSetPointTemperatureMilliCZone1Time) AS driverSetPointTimeBkp,
     CAST(null AS STRING) AS actualReeferMode,
     CAST(null AS TIMESTAMP) AS actualReeferModeTime,
+    CAST(null AS STRING) AS actualReeferModeBkp,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTimeBkp,
     PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S%Ez', reeferSetPointTemperatureMilliCZone1Time) AS time_axis
   FROM `bronze.samsara_trailer_stats`
 ),
@@ -160,6 +210,8 @@ setpoints AS (
     CAST(null AS TIMESTAMP) AS driverSetPointTimeBkp,
     CAST(null AS STRING) AS actualReeferMode,
     CAST(null AS TIMESTAMP) AS actualReeferModeTime,
+    CAST(null AS STRING) AS actualReeferModeBkp,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTimeBkp,
     TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(setpoint_item, '$.changedAtMs') AS INT64)) AS time_axis,
   FROM
     `bronze.samsara_detailed_trailer_stats`,
@@ -174,6 +226,9 @@ unioned AS (
   WHERE time_axis IS NOT NULL
   UNION ALL
   SELECT * FROM reefer_modes
+  WHERE time_axis IS NOT NULL
+  UNION ALL
+  SELECT * FROM reefer_modes_backup
   WHERE time_axis IS NOT NULL
   UNION ALL
   SELECT * FROM setpoints
@@ -194,6 +249,8 @@ forward_filled AS (
       driverSetPointTimeBkp, 
       actualReeferMode, 
       actualReeferModeTime, 
+      actualReeferModeBkp, 
+      actualReeferModeTimeBkp, 
       time_axis
     ),
     LAST_VALUE(driverSetPoint IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPoint,
@@ -201,7 +258,9 @@ forward_filled AS (
     LAST_VALUE(driverSetPointBkp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointBkp,
     LAST_VALUE(driverSetPointTimeBkp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointTimeBkp,
     LAST_VALUE(actualReeferMode IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferMode,
-    LAST_VALUE(actualReeferModeTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferModeTime
+    LAST_VALUE(actualReeferModeTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferModeTime,
+    LAST_VALUE(actualReeferModeBkp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferModeBkp,
+    LAST_VALUE(actualReeferModeTimeBkp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS actualReeferModeTimeBkp
   FROM unioned
 ),
 
@@ -213,8 +272,14 @@ final AS (
       driverSetPoint, 
       driverSetPointTime, 
       driverSetPointBkp, 
-      driverSetPointTimeBkp
+      driverSetPointTimeBkp,
+      actualReeferMode, 
+      actualReeferModeTime, 
+      actualReeferModeBkp, 
+      actualReeferModeTimeBkp
     ),
+    COALESCE(actualReeferMode, actualReeferModeBkp) AS actualReeferMode, 
+    COALESCE(actualReeferModeTime, actualReeferModeTimeBkp) AS actualReeferModeTime, 
     COALESCE(driverSetPoint, driverSetPointBkp) AS driverSetPoint, 
     CASE 
       WHEN COALESCE(driverSetPoint, driverSetPointBkp) = 0 THEN NULL
