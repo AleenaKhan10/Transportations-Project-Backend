@@ -18,10 +18,12 @@ INTERVAL_UNIT = "HOUR"
 
 
 def process_message_generic(message: str):
-    return message
-
-def process_dry_load_message(message: str):
-    return message.replace('\n> *Note:* `None`', '')
+    return (
+        message
+        .replace("> *Driver Set:* `nan°`", "> *Driver Set:* `0.0°`")
+        .replace('\n> *Note:* `None`', '')
+        .replace('\n> *Note:* ``', '')
+    )
 
 # A mapping of approach to slack channels
 approach_to_channel = {
@@ -66,7 +68,7 @@ alert_templates = {
             "> *Samsara Temp:* `{samsara_temp}°`\n"
             "> *Last Updated On:* `{samsara_temp_time}`\n"
             "> *Note:* `{remarks}`"
-        ), process_dry_load_message),
+        ), process_message_generic),
         "‼️ Attention / Issue ‼️": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
             ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
@@ -104,7 +106,7 @@ alert_templates = {
             "> *Samsara Temp:* `{samsara_temp}°`\n"
             "> *Last Updated On:* `{samsara_temp_time}`\n"
             "> *Note:* `{remarks}`"
-        ), process_dry_load_message),
+        ), process_message_generic),
     },
 }
 
