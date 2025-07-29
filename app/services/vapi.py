@@ -5,12 +5,13 @@ from fastapi.responses import JSONResponse
 from helpers import logger
 from logic.auth.security import get_current_user
 from models.drivers import Driver
-from models.driver_reports import DriverReport
+from models.driver_reports import DriverReport, DriverMorningReport
 from models.vapi import VAPICallRequest, DriverCallInsightsUpdate, VAPIData
 from utils.vapi_client import vapi_client
 
 
 router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
+router_no_auth = APIRouter(prefix="/api")
 
 
 
@@ -190,22 +191,42 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
         for driver in valid_drivers:
             logger.info(f"   • {driver.firstName} {driver.lastName} ({driver.driverId}) - {driver.phoneNumber}")
 
-        # Convert drivers to dicts for VAPI client
-        driver_dicts = [driver.model_dump() for driver in valid_drivers]
+        # Convert drivers to dicts and add VAPI data if provided
+        driver_dicts = []
+        for driver in valid_drivers:
+            driver_dict = driver.model_dump()
+            
+            # If vapiData is provided for this driver, add it
+            if request.vapiData and driver.driverId in request.vapiData:
+                vapi_data = request.vapiData[driver.driverId].model_dump(exclude_none=True)
+                driver_dict.update({"vapi_data": vapi_data})
+                logger.info(f"📋 Using provided VAPI data for driver {driver.driverId}: {vapi_data}")
+            
+            driver_dicts.append(driver_dict)
 
         # Use VAPI client with multiple drivers (single campaign)
         vapi_response = await vapi_client.create_vapi_call(driver_dicts)
 
-        # Return comprehensive response
+        # Return comprehensive response with driver details
+        driver_details = []
+        for driver in valid_drivers:
+            driver_details.append({
+                "driverId": driver.driverId,
+                "phoneNumber": driver.phoneNumber,
+                "driverName": f"{driver.firstName} {driver.lastName}",
+            })
+        
         return {
             "success": True,
             "campaignId": vapi_response["campaignId"],
+            "callId": vapi_response["callId"],  # For backward compatibility
             "totalDrivers": len(driver_ids),
             "validDrivers": len(valid_drivers),
             "invalidDrivers": len(invalid_driver_ids),
             "invalidDriverIds": invalid_driver_ids,
             "status": vapi_response["status"],
             "customers": vapi_response["customers"],
+            "driverDetails": driver_details,  # Same info as single driver endpoint
         }
 
     except HTTPException:
@@ -248,21 +269,28 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
             )
 
 
-@router.post("/update-reports-insights")
+@router_no_auth.post("/update-reports-insights")
 async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
     """
     Update driver call insights from VAPI call results
     """
+    logger.info("VAPI CALLING THIS CONTROLLER")
+    
     try:
-        driver_id = update_data.driverId
-        
-        logger.info(f"Updating call insights for driver: {driver_id}")
+        logger.info(
+            f"{update_data.driverId}, {update_data.tripId}, {update_data.currentLocation}, "
+            f"{update_data.milesRemaining}, {update_data.eta}, {update_data.onTimeStatus}, "
+            f"{update_data.delayReason}, {update_data.driverMood}, {update_data.preferredCallbackTime}, "
+            f"{update_data.wantsTextInstead}, {update_data.recordingUrl}"
+        )
 
-        # Find driver report
-        with DriverReport.get_session() as session:
+        # Find driver morning report by tripId
+        with DriverMorningReport.get_session() as session:
             from sqlmodel import select
-            statement = select(DriverReport).where(DriverReport.driverIdPrimary == driver_id)
+            statement = select(DriverMorningReport).where(DriverMorningReport.tripId == update_data.tripId)
             driver_report = session.exec(statement).first()
+            
+            logger.info(f"REPORT => {driver_report}")
 
             if not driver_report:
                 raise HTTPException(
@@ -273,28 +301,19 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
                     }
                 )
 
-            # Update report fields
-            if update_data.currentLocation is not None:
-                driver_report.currentLocation = update_data.currentLocation
-            if update_data.milesRemaining is not None:
-                driver_report.milesRemaining = update_data.milesRemaining
             if update_data.eta is not None:
-                driver_report.eta = update_data.eta
+                driver_report.driverETAfeedback = update_data.eta
             if update_data.onTimeStatus is not None:
-                driver_report.onTimeStatus = update_data.onTimeStatus
+                driver_report.onTime = update_data.onTimeStatus
             if update_data.delayReason is not None:
                 driver_report.delayReason = update_data.delayReason
             if update_data.driverMood is not None:
                 driver_report.driverFeeling = update_data.driverMood
-            if update_data.preferredCallbackTime is not None:
-                # Note: this field might need to be added to the model
-                pass
-            if update_data.wantsTextInstead is not None:
-                # Note: this field might need to be added to the model
-                pass
-            if update_data.issueReported is not None:
-                # Note: this field might need to be added to the model
-                pass
+            if update_data.callSummary is not None:
+                driver_report.ETA_Notes_1 = update_data.callSummary
+            driver_report.callStatus = 1
+            # Note: preferredCallbackTime, wantsTextInstead, recordingUrl fields 
+            # are not in the current DriverMorningReport model
 
             session.add(driver_report)
             session.commit()
@@ -303,7 +322,7 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
             "success": True,
             "message": "Driver report updated successfully.",
             "data": {
-                "driverId": driver_id,
+                "driverId": update_data.driverId,
                 "currentLocation": update_data.currentLocation,
                 "milesRemaining": update_data.milesRemaining,
                 "eta": update_data.eta,
@@ -312,8 +331,8 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
                 "driverMood": update_data.driverMood,
                 "preferredCallbackTime": update_data.preferredCallbackTime,
                 "wantsTextInstead": update_data.wantsTextInstead,
-                "issueReported": update_data.issueReported,
                 "recordingUrl": update_data.recordingUrl,
+                "callSummary": update_data.callSummary
             },
         }
 
