@@ -1,9 +1,10 @@
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel
 
 
 class VAPICallRequest(BaseModel):
     driverIds: List[str]
+    vapiData: Optional[Dict[str, "VAPIData"]] = None  # Map of driverId to VAPIData
 
 
 class VAPIData(BaseModel):
@@ -29,6 +30,7 @@ class VAPIData(BaseModel):
 
 class DriverCallInsightsUpdate(BaseModel):
     driverId: str
+    tripId: str
     currentLocation: Optional[str] = None
     milesRemaining: Optional[float] = None
     eta: Optional[str] = None
@@ -37,5 +39,5 @@ class DriverCallInsightsUpdate(BaseModel):
     driverMood: Optional[str] = None
     preferredCallbackTime: Optional[str] = None
     wantsTextInstead: Optional[bool] = None
-    issueReported: Optional[str] = None
     recordingUrl: Optional[str] = None
+    callSummary: Optional[str] = None

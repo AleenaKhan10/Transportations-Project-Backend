@@ -77,7 +77,7 @@ class VAPIClient:
                     variable_values.update({k: v for k, v in additional_fields.items() if v is not None})
                 
                 customers.append({
-                    "number": "+12192002824",  # Using hardcoded number as per original
+                    "number": driver['phoneNumber'],  # Using driver's real phone number
                     "name": f"{driver['firstName']} {driver['lastName']}",
                     "assistantOverrides": {
                         "variableValues": variable_values,
