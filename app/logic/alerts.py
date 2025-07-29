@@ -132,7 +132,7 @@ def send_slack_temp_alerts():
       WHERE 
         samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {INTERVAL} {INTERVAL_UNIT})
       AND 
-        alert_type != 'Ignore'
+        alert_type IS NOT NULL
     """
 
     alerts_df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
