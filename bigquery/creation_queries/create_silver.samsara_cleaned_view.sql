@@ -222,20 +222,15 @@ setpoints AS (
 -- Step 5: Create unified timeline
 -- Combine all event types into a single chronologically ordered dataset
 unioned AS (
-  SELECT * FROM samsara_processed
-  WHERE time_axis IS NOT NULL
+  SELECT * FROM samsara_processed WHERE time_axis IS NOT NULL
   UNION ALL
-  SELECT * FROM reefer_modes
-  WHERE time_axis IS NOT NULL
+  SELECT * FROM reefer_modes WHERE time_axis IS NOT NULL
   UNION ALL
-  SELECT * FROM reefer_modes_backup
-  WHERE time_axis IS NOT NULL
+  SELECT * FROM reefer_modes_backup WHERE time_axis IS NOT NULL
   UNION ALL
-  SELECT * FROM setpoints
-  WHERE time_axis IS NOT NULL
+  SELECT * FROM setpoints WHERE time_axis IS NOT NULL
   UNION ALL
-  SELECT * FROM setpoints_backup
-  WHERE time_axis IS NOT NULL
+  SELECT * FROM setpoints_backup WHERE time_axis IS NOT NULL
 ),
 
 -- Step 6: Apply forward fill logic
@@ -282,7 +277,7 @@ final AS (
     COALESCE(actualReeferModeTime, actualReeferModeTimeBkp) AS actualReeferModeTime, 
     COALESCE(driverSetPoint, driverSetPointBkp) AS driverSetPoint, 
     CASE 
-      WHEN COALESCE(driverSetPoint, driverSetPointBkp) = 0 THEN NULL
+      WHEN COALESCE(driverSetPoint, driverSetPointBkp) = 0 THEN 0
       ELSE ROUND(((COALESCE(driverSetPoint, driverSetPointBkp) / 1000))*(9/5) + 32, 0)
     END AS driverSetPointInF, 
     COALESCE(driverSetPointTime, driverSetPointTimeBkp) AS driverSetPointTime
