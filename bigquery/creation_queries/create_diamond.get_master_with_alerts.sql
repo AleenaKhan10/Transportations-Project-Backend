@@ -3,9 +3,17 @@ WITH base_data AS (
   SELECT 
     * EXCEPT (samsara_driver_set_point, samsara_reefer_mode, reefer_mode, reefer_mode_id, samsara_temp_time, driver_set_temp),
     COALESCE(samsara_temp_time, ditat_temp_time) AS samsara_temp_time,
-    samsara_driver_set_point AS driver_set_temp, -- NOTE: renaming to match Ditat's naming convention
     CASE 
-      WHEN samsara_reefer_mode IS NOT NULL THEN 2
+      WHEN 
+        samsara_driver_set_point IS NULL 
+        OR samsara_driver_set_point = 0 
+      THEN NULL 
+      ELSE samsara_driver_set_point 
+    END AS driver_set_temp, -- NOTE: renaming to match Ditat's naming convention
+    CASE 
+      WHEN samsara_reefer_mode = 'Off' THEN 0
+      WHEN samsara_reefer_mode = 'Continuous' THEN 2
+      WHEN samsara_reefer_mode = 'Start/Stop' THEN 2
       ELSE
         CASE 
           WHEN reefer_mode_id IN (1, 2) THEN 2

@@ -20,7 +20,7 @@ INTERVAL_UNIT = "HOUR"
 def process_message_generic(message: str):
     return (
         message
-        .replace("> *Driver Set:* `nan°`", "> *Driver Set:* `0.0°`")
+        .replace("> *Driver Set:* `nan°`", "> *Driver Set:* `unknown`")
         .replace('\n> *Note:* `None`', '')
         .replace('\n> *Note:* ``', '')
     )
