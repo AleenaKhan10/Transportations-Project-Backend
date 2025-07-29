@@ -32,6 +32,7 @@ async def get_driver_data_endpoint(driver_id: str):
 #     logger.info("getting driver's structured data")
 #     return Driver.get_by_id(driver_id).to_structured_response()
 
+
 @router.post("/settings/call/bulk")
 async def configure_driver_call_settings(updates: List[DriverCallUpdate]):
     logger.info('updating driver call settings')
