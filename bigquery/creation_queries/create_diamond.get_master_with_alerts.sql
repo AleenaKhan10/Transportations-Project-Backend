@@ -52,6 +52,7 @@ classified AS (
     CASE WHEN reefer_mode_id = 2 THEN 'On' ELSE 'Off' END AS reefer_mode, 
     reefer_mode_id,
     required_reefer_mode,
+    reefer_remote_mode, 
     required_reefer_mode_id,
     max_allowed_deviation,
     driver_set_temp, 
@@ -66,6 +67,7 @@ classified AS (
           WHEN required_temp = 99 THEN '🔥 99°F Required Temp'
           WHEN required_temp != driver_set_temp 
             AND driver_set_temp IS NOT NULL
+            AND reefer_remote_mode != 'Dead'
             THEN '⚠️ Driver Setpoint Mismatch'
           WHEN 
             ABS(samsara_temp - required_temp) > max_allowed_deviation 

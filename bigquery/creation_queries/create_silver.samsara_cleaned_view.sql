@@ -54,6 +54,8 @@ samsara_processed AS (
     ingestedAt,
     trailerSerialNumber,
     -- Initialize status columns for forward fill
+    null AS dischargeAirTemp,
+    CAST(null AS TIMESTAMP) AS dischargeAirTempTime,
     null AS driverSetPoint,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     null AS driverSetPointBkp,
@@ -90,6 +92,8 @@ reefer_modes_backup AS (
     CAST(null AS STRING) AS licensePlate,
     ingestedAt,
     CAST(null AS STRING) AS trailerSerialNumber,
+    null AS dischargeAirTemp,
+    CAST(null AS TIMESTAMP) AS dischargeAirTempTime,
     null AS driverSetPoint,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     null AS driverSetPointBkp,
@@ -125,6 +129,8 @@ reefer_modes AS (
     CAST(null AS STRING) AS licensePlate,
     ingestedAt,
     CAST(null AS STRING) AS trailerSerialNumber,
+    null AS dischargeAirTemp,
+    CAST(null AS TIMESTAMP) AS dischargeAirTempTime,
     null AS driverSetPoint,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     null AS driverSetPointBkp,
@@ -169,6 +175,8 @@ setpoints_backup AS (
     CAST(null AS STRING) AS licensePlate,
     ingestedAt,
     CAST(null AS STRING) AS trailerSerialNumber,
+    null AS dischargeAirTemp,
+    CAST(null AS TIMESTAMP) AS dischargeAirTempTime,
     null AS driverSetPoint,
     CAST(null AS TIMESTAMP) AS driverSetPointTime,
     reeferSetPointTemperatureMilliCZone1Value AS driverSetPointBkp,
@@ -204,6 +212,8 @@ setpoints AS (
     CAST(null AS STRING) AS licensePlate,
     ingestedAt,
     CAST(null AS STRING) AS trailerSerialNumber,
+    null AS dischargeAirTemp,
+    CAST(null AS TIMESTAMP) AS dischargeAirTempTime,
     CAST(JSON_EXTRACT_SCALAR(setpoint_item, '$.tempInMilliC') AS INT64) AS driverSetPoint,
     TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(setpoint_item, '$.changedAtMs') AS INT64)) AS driverSetPointTime,
     null AS driverSetPointBkp,
@@ -219,6 +229,49 @@ setpoints AS (
   QUALIFY ROW_NUMBER() OVER (PARTITION BY name, driverSetPoint, driverSetPointTime ORDER BY ingestedAt DESC) = 1
 ),
 
+-- Extract discharge air temp events
+-- This is used to determine if the reefer remote is working
+-- The logic is: 
+--   If discharge air and driver setpoint (primary source) haven't changed 
+--   over the last 15 minutes, then the reefer remote is dead
+discharge_airs AS (
+  SELECT DISTINCT
+    null AS sensorId,
+    CAST(null AS STRING) AS sensorName,
+    null AS ambientTemperature,
+    null AS ambientTemperatureInF,
+    CAST(null AS TIMESTAMP) AS ambientTemperatureTime,
+    CAST(null AS STRING) AS vehicleId,
+    CAST(null AS STRING) AS trailerId,
+    name AS trailerName,
+    CAST(null AS STRING) AS tagId,
+    CAST(null AS STRING) AS tagName,
+    CAST(null AS STRING) AS installedGatewayModel,
+    CAST(null AS STRING) AS installedGatewaySerial,
+    CAST(null AS STRING) AS installedGatewaySerialAlphaNum,
+    CAST(null AS STRING) AS installedGatewayVIN,
+    CAST(null AS BOOL) AS enabledForMobile,
+    CAST(null AS STRING) AS notes,
+    CAST(null AS STRING) AS licensePlate,
+    ingestedAt,
+    CAST(null AS STRING) AS trailerSerialNumber,
+    CAST(JSON_EXTRACT_SCALAR(rair_item, '$.tempInMilliC') AS INT64) AS dischargeAirTemp,
+    TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(rair_item, '$.changedAtMs') AS INT64)) AS dischargeAirTempTime,
+    null AS driverSetPoint,
+    CAST(null AS TIMESTAMP) AS driverSetPointTime,
+    null AS driverSetPointBkp,
+    CAST(null AS TIMESTAMP) AS driverSetPointTimeBkp,
+    CAST(null AS STRING) AS actualReeferMode,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTime,
+    CAST(null AS STRING) AS actualReeferModeBkp,
+    CAST(null AS TIMESTAMP) AS actualReeferModeTimeBkp,
+    TIMESTAMP_MILLIS(CAST(JSON_EXTRACT_SCALAR(rair_item, '$.changedAtMs') AS INT64)) AS time_axis,
+  FROM
+    `bronze.samsara_detailed_trailer_stats`,
+    UNNEST(JSON_EXTRACT_ARRAY(dischargeAirTemperature)) AS rair_item
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY name, dischargeAirTemp, dischargeAirTempTime ORDER BY ingestedAt DESC) = 1
+),
+
 -- Step 5: Create unified timeline
 -- Combine all event types into a single chronologically ordered dataset
 unioned AS (
@@ -231,6 +284,8 @@ unioned AS (
   SELECT * FROM setpoints WHERE time_axis IS NOT NULL
   UNION ALL
   SELECT * FROM setpoints_backup WHERE time_axis IS NOT NULL
+  UNION ALL
+  SELECT * FROM discharge_airs WHERE time_axis IS NOT NULL
 ),
 
 -- Step 6: Apply forward fill logic
@@ -238,6 +293,8 @@ unioned AS (
 forward_filled AS (
   SELECT
     * EXCEPT(
+      dischargeAirTemp,
+      dischargeAirTempTime,
       driverSetPoint, 
       driverSetPointTime, 
       driverSetPointBkp, 
@@ -245,9 +302,10 @@ forward_filled AS (
       actualReeferMode, 
       actualReeferModeTime, 
       actualReeferModeBkp, 
-      actualReeferModeTimeBkp, 
-      time_axis
+      actualReeferModeTimeBkp
     ),
+    LAST_VALUE(dischargeAirTemp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS dischargeAirTemp,
+    LAST_VALUE(dischargeAirTempTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS dischargeAirTempTime,
     LAST_VALUE(driverSetPoint IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPoint,
     LAST_VALUE(driverSetPointTime IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointTime,
     LAST_VALUE(driverSetPointBkp IGNORE NULLS) OVER (PARTITION BY trailerName ORDER BY time_axis) AS driverSetPointBkp,
@@ -259,11 +317,14 @@ forward_filled AS (
   FROM unioned
 ),
 
--- Step 7: Consolidate setpoint sources
--- Prefer primary setpoint source over backup when available
+-- Step 7: Consolidate all sources
+-- Prefer primary source over backup when available
+-- Determine if the reefer remote is actually working
 final AS (
   SELECT 
     * EXCEPT(
+      dischargeAirTemp,
+      dischargeAirTempTime,
       driverSetPoint, 
       driverSetPointTime, 
       driverSetPointBkp, 
@@ -271,8 +332,13 @@ final AS (
       actualReeferMode, 
       actualReeferModeTime, 
       actualReeferModeBkp, 
-      actualReeferModeTimeBkp
+      actualReeferModeTimeBkp, 
+      time_axis
     ),
+    CASE
+      WHEN (time_axis - dischargeAirTempTime) > INTERVAL 15 MINUTE AND (time_axis - driverSetPointTime) > INTERVAL 15 MINUTE THEN 'Dead'
+      ELSE 'Working'
+    END AS reeferRemoteMode,
     COALESCE(actualReeferMode, actualReeferModeBkp) AS actualReeferMode, 
     COALESCE(actualReeferModeTime, actualReeferModeTimeBkp) AS actualReeferModeTime, 
     COALESCE(driverSetPoint, driverSetPointBkp) AS driverSetPoint, 
