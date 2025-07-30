@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
+from helpers.time_utils import BQTimeUnit
+from logic.trips import fetch_latest_alerts
 from logic.auth.security import get_current_user
 from logic.trips import get_trailer_and_trips, get_trip_data
 
@@ -24,3 +26,12 @@ async def trip_data(trip_id: str, trailer_id: str):
         return JSONResponse(status_code=400, content=data)
     
     return JSONResponse(content=data)
+
+
+@router.get("/alerts")
+async def get_latest_alerts(
+    value: int = Query(1, gt=0, description="Numeric value for time unit"),
+    unit: BQTimeUnit = Query(BQTimeUnit.HOUR, description="Unit of time (minutes, hours, days, ...)"),
+):
+    result = fetch_latest_alerts(value, unit)
+    return result
