@@ -1,6 +1,11 @@
 import json
+from typing import Any
+
 import pandas_gbq as pd
+
+from helpers.time_utils import BQTimeUnit
 from helpers.utils import is_trailer_id, is_trip_id
+
 
 def get_trailer_and_trips():
     df = pd.read_gbq("""
@@ -21,4 +26,14 @@ def get_trip_data(trailer_id: str, trip_id: str):
     """)
     if df.empty:
         return {"error": "No data found for the provided trailer_id and trip_id"}
-    return json.loads(df.rename(columns={'t': 'aggregated_data'}).to_json(orient='records')) 
+    return json.loads(df.rename(columns={'t': 'aggregated_data'}).to_json(orient='records'))
+
+def fetch_latest_alerts(value: int, unit: BQTimeUnit) -> dict[str, Any]:
+    query = f"""
+        SELECT *
+        FROM `agy-intelligence-hub.diamond.get_master_grouped_subtrip_level`({value}, '{unit.value}', TRUE)
+    """
+    df = pd.read_gbq(query, project_id='agy-intelligence-hub', progress_bar_type=None)
+    if df.empty:
+        return {"error": "No data found"}
+    return json.loads(df.rename(columns={'t': 'aggregated_data'}).to_json(orient='records'))
