@@ -11,6 +11,14 @@ class TimeUnit(Enum):
     def __repr__(self):
         return self.value
 
+class BQTimeUnit(Enum):
+    MINUTE = "MINUTE"
+    HOUR = "HOUR"
+    DAY = "DAY"
+    
+    def __repr__(self):
+        return self.value
+    
 # TimeUnits
 TU = TimeUnit
 

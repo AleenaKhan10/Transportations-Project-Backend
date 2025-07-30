@@ -1,9 +1,12 @@
+from collections import defaultdict
 from datetime import datetime, timezone
 
+from fastapi.responses import JSONResponse
 import pytz
 import requests
 import pandas as pd
 import pandas_gbq as pdg
+import math
 from sqlmodel import select, Session
 
 from config import settings
@@ -239,3 +242,116 @@ def delete_alert_filter_db(filter_id: int):
         session.delete(db_filter)
         session.commit()
         return {"ok": True}
+
+
+
+def sanitize_value(val):
+    if isinstance(val, float) and (math.isnan(val) or math.isinf(val)):
+        return None
+    return val
+
+def send_latest_alerts():
+    query = """
+    SELECT
+      *
+    FROM
+      `agy-intelligence-hub`.`diamond`.`get_master_with_alerts`(TRUE)
+    """
+    alerts_df = pdg.read_gbq(query, project_id='agy-intelligence-hub', progress_bar_type=None)
+
+    final_response = []
+
+    for _, row in alerts_df.iterrows():
+        def to_unix_ms(val):
+            return int(val.timestamp() * 1000) if isinstance(val, pd.Timestamp) else val
+
+        samsara_temp_time = row["samsara_temp_time"]
+        if isinstance(samsara_temp_time, pd.Timestamp):
+            samsara_temp_time = int(samsara_temp_time.timestamp() * 1000)
+
+        alert_entry = {
+            "trailer_id": sanitize_value(row["trailer_id"]),
+            "trip_id": sanitize_value(row["trip_id"]),
+            "leg_id": sanitize_value(row["leg_id"]),
+            "driver_id": sanitize_value(row["driver_id"]),
+            "truck_id": sanitize_value(row["truck_id"]),
+            "status_id": sanitize_value(row["status_id"]),
+            "status": sanitize_value(row["status"]),
+            "priority": sanitize_value(row["priority"]),
+            "trip_start_time": sanitize_value(to_unix_ms(row["trip_start_time"])),
+            "trip_end_time": sanitize_value(to_unix_ms(row["trip_end_time"])),
+            "leg_start_time": sanitize_value(to_unix_ms(row["leg_start_time"])),
+            "leg_end_time": sanitize_value(to_unix_ms(row["leg_end_time"])),
+            "sub_leg_start_time": sanitize_value(to_unix_ms(row["sub_leg_start_time"])),
+            "sub_leg_end_time": sanitize_value(to_unix_ms(row["sub_leg_end_time"])),
+            "reefer_mode_id": sanitize_value(row["reefer_mode_id"]),
+            "reefer_mode": sanitize_value(row["reefer_mode"]),
+            "required_temp": sanitize_value(row["required_temp"]),
+            "driver_set_temp": sanitize_value(row["driver_set_temp"]),
+            "samsara_temp": sanitize_value(row["samsara_temp"]),
+            "samsara_temp_time": sanitize_value(samsara_temp_time),
+            "alert_type": sanitize_value(row["alert_type"]),
+            "remarks": sanitize_value(row["remarks"])
+        }
+
+        final_response.append(alert_entry)
+
+    return JSONResponse(content=final_response)
+
+
+def to_utc_datetime_string(val):
+    if isinstance(val, pd.Timestamp):
+        return val.strftime("%Y-%m-%d %H:%M:%S.%f UTC")
+    return val
+
+def sanitize_value_duration(val):
+    if pd.isna(val):
+        return None
+    if isinstance(val, pd.Timestamp):
+        return val.strftime("%Y-%m-%d %H:%M:%S.%f UTC")
+    return val
+
+def send_alerts_duration(value: int, unit: str):
+    query = f"""
+        SELECT *
+        FROM `agy-intelligence-hub.diamond.get_master_grouped_subtrip_level`({value}, '{unit}');
+    """
+
+    df = pdg.read_gbq(query, project_id='agy-intelligence-hub', progress_bar_type=None)
+
+    final_response = []
+
+    for _, row in df.iterrows():
+        t_data = row["t"][0]
+
+        alert_entry = {
+            "trailer_id": row.get("trailer_id"),
+            "trip_id": row.get("trip_id"),
+            "leg_id": row.get("leg_id"),
+            "driver_id": row.get("driver_id"),
+            "truck_id": row.get("truck_id"),
+            "status_id": row.get("status_id"),
+            "status": row.get("status"),
+            "priority": row.get("priority"),
+
+            # Convert all timestamps to UTC datetime string
+            "trip_start_time": to_utc_datetime_string(row.get("trip_start_time")),
+            "trip_end_time": to_utc_datetime_string(row.get("trip_end_time")),
+            "leg_start_time": to_utc_datetime_string(row.get("leg_start_time")),
+            "leg_end_time": to_utc_datetime_string(row.get("leg_end_time")),
+            "sub_leg_start_time": to_utc_datetime_string(row.get("sub_leg_start_time")),
+            "sub_leg_end_time": to_utc_datetime_string(row.get("sub_leg_end_time")),
+
+            "reefer_mode_id": t_data.get("reefer_mode_id"),
+            "reefer_mode": t_data.get("reefer_mode"),
+            "required_temp": t_data.get("required_temp"),
+            "driver_set_temp": t_data.get("driver_set_temp"),
+            "samsara_temp": t_data.get("samsara_temp"),
+            "samsara_temp_time": to_utc_datetime_string(t_data.get("samsara_temp_time")),
+            "alert_type": t_data.get("alert_type"),
+            "remarks": t_data.get("remarks")
+        }
+
+        final_response.append(alert_entry)
+
+    return final_response
