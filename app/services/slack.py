@@ -46,7 +46,7 @@ async def verify_slack_request(request: Request):
         raise HTTPException(status_code=403, detail="Slack signature verification failed.")
 
 
-@router.post("/interactive")
+@router.post("/interactions")
 async def slack_interactive_endpoint(request: Request):
     """
     This endpoint handles all interactive components from Slack,
