@@ -11,6 +11,7 @@ from services import (
 from services.vapi import router as vapi_router, router_no_auth as vapi_router_no_auth
 from services.reports import router as reports_router
 from services.pcmiler import router as pcmiler_router
+from services.slack import router as slack_router
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -39,6 +40,7 @@ app.include_router(vapi_router_no_auth, tags=["vapi"])
 app.include_router(reports_router, tags=["reports"])
 app.include_router(pcmiler_router, tags=["pcmiler"])
 app.include_router(webhook_router, tags=["webhook"])
+app.include_router(slack_router, tags=["slack"])
 
 if __name__ == "__main__":
     import uvicorn
