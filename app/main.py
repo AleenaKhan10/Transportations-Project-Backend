@@ -6,6 +6,7 @@ from services import (
     ingest_router,
     alert_router,
     drivers_router,
+    webhook_router,
 )
 from services.vapi import router as vapi_router, router_no_auth as vapi_router_no_auth
 from services.reports import router as reports_router
@@ -37,6 +38,7 @@ app.include_router(vapi_router, tags=["vapi"])
 app.include_router(vapi_router_no_auth, tags=["vapi"])
 app.include_router(reports_router, tags=["reports"])
 app.include_router(pcmiler_router, tags=["pcmiler"])
+app.include_router(webhook_router, tags=["webhook"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -7,7 +7,7 @@ import pandas_gbq as pdg
 
 from config import settings
 from helpers.time_utils import BQTimeUnit
-from logic.alerts.filters import get_alert_filters
+from logic.alerts.filters import get_excluded_alert_filters, filter_df_by_alert_filters
 
 
 SLACK_BOT_TOKEN = settings.SLACK_BOT_TOKEN
@@ -117,10 +117,7 @@ def send_slack_temp_alerts():
     chicago_tz = pytz.timezone("America/Chicago")
     dt_format_str = "%b %d, %Y at %I:%M %p %Z"
     
-    filters = get_alert_filters()
-
-    # Build a set of (trailer_id, trip_id) pairs to exclude
-    exclude_pairs = set((f.trailer_id, f.trip_id) for f in filters)
+    filters = get_excluded_alert_filters()
     
     query = f"""
       SELECT * FROM `agy-intelligence-hub.diamond.get_master_with_alerts`(TRUE)
@@ -131,6 +128,11 @@ def send_slack_temp_alerts():
     """
 
     alerts_df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
+    
+    # Filter out alerts that match the filters
+    alerts_df = filter_df_by_alert_filters(alerts_df, filters)
+    
+    response = {}
     
     for approach, channel in approach_to_channel.items():
         print(f"Processing alerts for approach: {approach} and sending to channel: {channel}")
@@ -150,8 +152,6 @@ def send_slack_temp_alerts():
             _df: pd.DataFrame = alerts_df[alerts_df['alert_type'] == alert_type]
             
             if not _df.empty:
-                _df = _df[~_df.apply(lambda row: (row['trailer_id'], row['trip_id']) in exclude_pairs, axis=1)]
-                
                 # Continue only if there are alerts left after filtering
                 if _df.empty:
                     continue
@@ -170,6 +170,7 @@ def send_slack_temp_alerts():
         # If no alerts were processed after all filters, don't send a message
         if not alerts_processed:
             print(f"No new alerts to send for approach: {approach}.")
+            response[approach] = {"message": "No new alerts to send", "slack_status": None}
             continue 
 
         # Remove the last divider for a cleaner look
@@ -192,5 +193,6 @@ def send_slack_temp_alerts():
         }
 
         slack_response = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
+        response[approach] = {"message": slack_response.text, "slack_status": slack_response.status_code}
 
-    return {"message": slack_response.text, "slack_status": slack_response.status_code}
+    return response

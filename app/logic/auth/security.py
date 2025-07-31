@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from sqlmodel import Session, select
 from fastapi.security import OAuth2PasswordBearer
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import Depends, HTTPException, Query, status, Header
 
 from config import settings
 from models.user import User
@@ -50,4 +50,11 @@ def verify_static_token(x_api_key: str = Header(..., description="Your secret AP
     Dependency to verify the secret token in the X-Auth-Token header for ingestion services.
     """
     if x_api_key != settings.DUMMY_TOKEN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing API token")
+
+def verify_webhook_token(token: str = Query(..., description="Secret API token.")):
+    """
+    Dependency to verify the secret token in query parameter for webhook services.
+    """
+    if token != settings.WEBHOOK_TOKEN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or missing API token")
