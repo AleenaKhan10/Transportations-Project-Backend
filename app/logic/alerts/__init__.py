@@ -10,7 +10,7 @@ from logic.alerts.filters import (
     delete_alert_filter_by_id,
     delete_alert_filter_by_entity_id,
 )
-from logic.alerts.slack import send_slack_temp_alerts
+from logic.alerts.slack import send_slack_temp_alerts, send_muted_entities
 
 __all__ = [
     "toggle_entity_alert",
@@ -24,4 +24,5 @@ __all__ = [
     "delete_alert_filter_by_id",
     "delete_alert_filter_by_entity_id",
     "send_slack_temp_alerts",
+    "send_muted_entities",
 ]

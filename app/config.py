@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # For eg: `/cloudsql/agy-intelligence-hub:us-central1:agy-intelligence-hub-instance`
     INSTANCE_UNIX_SOCKET: str | None = None
     
+    # Cloud Run URL
+    CLOUD_RUN_URL: str = "https://agy-backend-181509438418.us-central1.run.app"
+
     # Auth settings
     AUTH_ROUTER_PREFIX: str = "/auth"
     TOKEN_ENDPOINT: str = "/login"
