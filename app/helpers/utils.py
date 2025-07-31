@@ -1,4 +1,3 @@
-import re
 import json
 import logging
 import traceback
@@ -10,12 +9,6 @@ def dump_json(x):
         return json.dumps(x)
     except Exception:
         return x
-
-def is_trip_id(trip_id: str):
-    return re.match(r"[A-Z]{2}-\d{10}", trip_id)
-
-def is_trailer_id(trailer_id: str):
-    return re.match(r"RX\d{5}E", trailer_id)
 
 def get_trace(e: Exception, n: int = 5):
     return "".join(traceback.format_exception(e)[-n:])

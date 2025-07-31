@@ -4,6 +4,7 @@ class Settings(BaseSettings):
     DITAT_TOKEN: str
     SAMSARA_TOKEN: str
     DUMMY_TOKEN: str
+    WEBHOOK_TOKEN: str
 
     # Database settings
     DB_USER: str

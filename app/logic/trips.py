@@ -4,7 +4,7 @@ from typing import Any
 import pandas_gbq as pd
 
 from helpers.time_utils import BQTimeUnit
-from helpers.utils import is_trailer_id, is_trip_id
+from helpers.agy_utils import is_trailer_id, is_trip_id
 
 
 def get_trailer_and_trips():
