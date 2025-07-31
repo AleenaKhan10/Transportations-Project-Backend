@@ -328,7 +328,7 @@ def send_slack_temp_alerts():
                     "type": "button",
                     "text": {"type": "plain_text", "text": "📋 View Muted List", "emoji": True},
                     "style": "primary",
-                    "url": f"{settings.CLOUD_RUN_URL}/webhook/alerts/slack/muted?channel={channel}&token={settings.WEBHOOK_TOKEN}",
+                    "url": f"{settings.CLOUD_RUN_URL}/webhook/alerts/slack/muted?channel={channel.replace('#', '')}&token={settings.WEBHOOK_TOKEN}",
                     "action_id": "view_muted_list"
                 }
             ]
