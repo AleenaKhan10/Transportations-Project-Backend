@@ -276,7 +276,7 @@ def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel:
     entity_type = get_id_type(entity_id)
     if entity_type is None:
         return None
-    toggle_entity_alert(entity_id, mute_type)
+    toggle_entity_alert(entity_id, mute_type == MuteEnum.MUTE)
     return Payload(
         channel=channel,
         blocks=[
