@@ -73,6 +73,8 @@ async def slack_interactive_endpoint(request: Request, bt: BackgroundTasks = Bac
 
     # 3. Check if the interaction is a button click in a block
     if payload.get("type") == "block_actions":
+        user_id: str = payload["user"]["id"]
+
         # There can be multiple actions, but for our case, we only expect one.
         action: dict = payload["actions"][0]
         action_id = ActionId.from_id(action.get("action_id"))
@@ -90,9 +92,10 @@ async def slack_interactive_endpoint(request: Request, bt: BackgroundTasks = Bac
                 entity_id=value.id, 
                 mute_type=value.mute_type,
                 channel=value.channel,
+                user_id=user_id,
             )
         elif action_id == ActionId.MUTED_ENTITIES:
-            bt.add_task(send_muted_entities, channel=value.channel)
+            bt.add_task(send_muted_entities, channel=value.channel, user_id=user_id)
         else:
             # Handle unknown actions if necessary
             logger.warning(f"⚠️ Received unknown action_id: {action_id}")

@@ -218,7 +218,7 @@ def send_slack_temp_alerts():
     return response
 
 
-def send_muted_entities(channel: str):
+def send_muted_entities(channel: str, user_id: str = None):
     channel = channel if channel.startswith("#") else f"#{channel}"
     muted_entities = get_excluded_alert_filters()
     if not muted_entities:
@@ -268,24 +268,33 @@ def send_muted_entities(channel: str):
     return Payload(
         channel=channel,
         blocks=blocks,
-        text="Muted Alerts List"
+        text="Muted Alerts List",
+        user=user_id,
     ).post()
 
 
-def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel: str):
+def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel: str, user_id: str = None):
     entity_type = get_id_type(entity_id)
     if entity_type is None:
         return None
-    toggle_entity_alert(entity_id, mute_type == MuteEnum.MUTE)
-    return Payload(
-        channel=channel,
-        blocks=[
-            SectionBlock(
-                text=MDText(text=f"Successfully *{mute_type.value}d* {entity_type.value.title()} `{entity_id}`")
-            )
-        ],
-        text="Muted Alerts List",
-    ).post()
+    toggled = toggle_entity_alert(entity_id, mute_type == MuteEnum.MUTE)
+    
+    message = (
+        f"{entity_type.value.title()} `{entity_id}` has been *{mute_type.value}d*"
+        if toggled
+        else f"{entity_type.value.title()} `{entity_id}` is already *{mute_type.value}d*"
+    )
+    
+    # If a user ID is provided, add a mention
+    if user_id:
+        message = f"Hello <@{user_id}>, {message[0].lower()}{message[1:]}"
+    
+    # This is to suppress the message from being sent to the channel
+    # Rather it gets sent as an ephemeral message
+    if toggled:
+        user_id = None
+
+    return Payload(channel=channel, blocks=[SectionBlock(text=MDText(text=message))], text="Muted Alerts List", user=user_id).post()
 
 
 # ------ Slack Message Helpers ------
@@ -301,7 +310,7 @@ class ActionValue(NamedTuple):
         if not isinstance(value, str) or value.count("/") != 2:
             return None
         mute_type, _id, channel = value.split("/")
-        return cls(_id, mute_type, channel)
+        return cls(_id, MuteEnum(mute_type), channel)
     
     def to_value(self):
         return f"{self.mute_type.value}/{self.id}/{self.channel}"

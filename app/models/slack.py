@@ -98,23 +98,47 @@ class ActionsBlock(BaseModel):
 
 
 class Payload(BaseModel):
+    """
+    A Slack message payload.
+
+    You can use this to send a message to a Slack channel.
+    If you provide a `user`, it will send an ephemeral message to that user.
+    """
+
     channel: str
     blocks: list[
         DividerBlock | SectionBlock | HeaderBlock | ContextBlock | ActionsBlock
     ]
     text: str
+    user: str | None = None
 
     class Config:
         arbitrary_types_allowed = True
 
-    def post(self):
+    def post(self) -> dict[str, str | int]:
+        """
+        Posts the payload to the Slack API.
+
+        If `user` is provided, it will send an ephemeral message to that user.
+        Otherwise, it will send a regular message to the channel.
+
+        Returns:
+            A dictionary with the message text and Slack status code.
+        """
+        if self.user:
+            endpoint = "/chat.postEphemeral"
+            content_type = "application/json; charset=utf-8"
+        else:
+            endpoint = "/chat.postMessage"
+            content_type = "application/json"
+        
         payload = self.model_dump_json(exclude_none=True)
         headers = {
             "Authorization": f"Bearer {settings.SLACK_BOT_TOKEN}",
-            "Content-Type": "application/json",
+            "Content-Type": content_type,
         }
         response = requests.post(
-            "https://slack.com/api/chat.postMessage", data=payload, headers=headers
+            f"https://slack.com/api{endpoint}", data=payload, headers=headers
         )
         return {
             "message": response.text,

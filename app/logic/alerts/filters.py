@@ -122,6 +122,10 @@ def delete_alert_filter_by_entity_id(entity_id: str):
 
 
 def toggle_entity_alert(entity_id: str, mute: bool = True):
+    current_filter = get_alert_filter_by_entity_id(entity_id)
+    if current_filter and current_filter.exclude == mute:
+        return False
+    
     alert_filter_create = AlertFilterCreate(
         entity_id=entity_id,
         id_type=get_id_type(entity_id),
