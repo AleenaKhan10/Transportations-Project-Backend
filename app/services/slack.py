@@ -6,7 +6,6 @@ from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Response
 
 from helpers import logger
 from config import settings
-from models.alert_filter import MuteEnum
 from logic.alerts import (
     toggle_entity_alert_and_notify,
     send_muted_entities,
@@ -89,7 +88,7 @@ async def slack_interactive_endpoint(request: Request, bt: BackgroundTasks = Bac
             bt.add_task(
                 toggle_entity_alert_and_notify, 
                 entity_id=value.id, 
-                mute=value.mute_type == MuteEnum.MUTE,
+                mute_type=value.mute_type,
                 channel=value.channel,
             )
         elif action_id == ActionId.MUTED_ENTITIES:
