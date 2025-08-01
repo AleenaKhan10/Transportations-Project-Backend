@@ -61,7 +61,7 @@ async def slack_interactive_endpoint(request: Request, bt: BackgroundTasks = Bac
     # 1. Verify that the request is from Slack (CRITICAL FOR SECURITY)
     # Comment out the line below if you are testing locally with a tool like ngrok
     # and haven't set up your signing secret yet.
-    # await verify_slack_request(request)
+    await verify_slack_request(request)
 
     # 2. Parse the payload from the form data
     form_data = await request.form()
