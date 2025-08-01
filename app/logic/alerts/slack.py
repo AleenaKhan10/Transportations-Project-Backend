@@ -1,153 +1,43 @@
+from enum import Enum
 from datetime import datetime
+from typing import NamedTuple
 from collections import defaultdict
 
 import pytz
-import requests
 import pandas as pd
 import pandas_gbq as pdg
 
 from config import settings
+from models.slack import (
+    Button,
+    MDText,
+    Payload,
+    PlainText,
+    ButtonStyle,
+    HeaderBlock,
+    ActionsBlock,
+    ContextBlock,
+    DividerBlock,
+    SectionBlock,
+)
+from models.alert_filter import MuteEnum
+from helpers.agy_utils import get_id_type
 from helpers.time_utils import BQTimeUnit
-from logic.alerts.filters import get_excluded_alert_filters, filter_df_by_alert_filters
+from logic.alerts.filters import (
+    toggle_entity_alert,
+    get_excluded_alert_filters,
+    filter_df_by_alert_filters,
+)
 
-
-SLACK_BOT_TOKEN = settings.SLACK_BOT_TOKEN
 
 INTERVAL = 1
 INTERVAL_UNIT = BQTimeUnit.HOUR
 
 CHICAGO_TZ = pytz.timezone("America/Chicago")
+HUMAN_DATETIME_FORMAT = "%b %d, %Y at %I:%M %p %Z"
 
 
-def get_mute_webhook_url(entity_id: str):
-    return f"{settings.CLOUD_RUN_URL}/webhook/alerts/mute/{entity_id}?token={settings.WEBHOOK_TOKEN}"
-
-def get_unmute_webhook_url(entity_id: str):
-    return f"{settings.CLOUD_RUN_URL}/webhook/alerts/unmute/{entity_id}?token={settings.WEBHOOK_TOKEN}"
-
-
-def create_mute_actions(trip_id: str, trailer_id: str):
-    """Create action buttons for muting/unmuting alerts by trip or trailer"""
-    return {
-        "type": "actions",
-        "elements": [
-            {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "🔇 Mute Trip", "emoji": True},
-                "style": "danger",
-                "url": get_mute_webhook_url(trip_id),
-                "action_id": f"mute_trip_{trip_id}"
-            },
-            {
-                "type": "button",
-                "text": {"type": "plain_text", "text": "🔇 Mute Trailer", "emoji": True},
-                "style": "danger",
-                "url": get_mute_webhook_url(trailer_id),
-                "action_id": f"mute_trailer_{trailer_id}"
-            },
-        ]
-    }
-
-
-def send_muted_entities(channel: str):
-    channel = channel if channel.startswith("#") else f"#{channel}"
-    muted_entities = get_excluded_alert_filters()
-    if not muted_entities:
-        # Send message indicating no muted entities
-        payload = {
-            "channel": channel,
-            "blocks": [
-                {
-                    "type": "header",
-                    "text": {"type": "plain_text", "text": "📋 Muted Alerts List", "emoji": True}
-                },
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": "✅ *No alerts are currently muted.*"}
-                }
-            ],
-            "text": "No Muted Alerts"
-        }
-        headers = {
-            "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        slack_response = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
-        return {
-            "message": slack_response.text,
-            "slack_status": slack_response.status_code,
-        }
-    
-    # Create a map of idtype names to entity IDs
-    idtype_values_map: dict[str, list[str]] = defaultdict(list)
-    for filter in muted_entities:
-        idtype_values_map[filter.id_type.value].append(filter.entity_id)
-
-    # Create blocks for the Slack message
-    blocks = [
-        {
-            "type": "header",
-            "text": {"type": "plain_text", "text": "📋 Muted Alerts List", "emoji": True}
-        },
-        {
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": f"*Total muted entities:* {len(muted_entities)}"}]
-        }
-    ]
-
-    # Process each ID type and its entities
-    for id_type, entity_ids in idtype_values_map.items():
-        # Add section header for this ID type
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": f"*🔇 Muted {id_type.title()}s ({len(entity_ids)}):*"}
-        })
-        
-        # Add each entity with its unmute button
-        for entity_id in entity_ids:
-            # Create a section with the entity ID and unmute button
-            blocks.append({
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"• `{entity_id}`"},
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "🔊 Unmute", "emoji": True},
-                    "style": "primary",
-                    "url": get_unmute_webhook_url(entity_id),
-                    "action_id": f"unmute_{id_type}_{entity_id}"
-                }
-            })
-        
-        # Add divider between different ID types
-        blocks.append({"type": "divider"})
-    
-    # Remove the last divider for cleaner appearance
-    if blocks[-1]["type"] == "divider":
-        blocks.pop()
-    
-    # Add timestamp
-    current_time = datetime.now(CHICAGO_TZ).strftime("%b %d, %Y at %I:%M %p %Z")
-    blocks.append({
-        "type": "context",
-        "elements": [{"type": "plain_text", "text": f"Generated at: {current_time}"}]
-    })
-
-    payload = {
-        "channel": channel,
-        "blocks": blocks,
-        "text": "Muted Alerts List"
-    }
-    headers = {
-        "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    slack_response = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
-
-    return {
-        "message": slack_response.text,
-        "slack_status": slack_response.status_code,
-    }
+# ------ Alert Templates ------
 
 
 def process_message_generic(message: str):
@@ -157,7 +47,6 @@ def process_message_generic(message: str):
         .replace('\n> *Note:* `None`', '')
         .replace('\n> *Note:* ``', '')
     )
-
 
 # A mapping of approach to slack channels
 approach_to_channel = {
@@ -245,11 +134,12 @@ alert_templates = {
 }
 
 
+# ------ Main Functions to send Slack messages ------
+
+
 def send_slack_temp_alerts():
     interval_unit = INTERVAL_UNIT.value.lower()
-    context_unit_part = interval_unit if INTERVAL == 1 else f"{INTERVAL} {interval_unit}s"
-
-    dt_format_str = "%b %d, %Y at %I:%M %p %Z"
+    context_unit_part = interval_unit if INTERVAL == 1 else f"{INTERVAL} {interval_unit}s"    
     
     filters = get_excluded_alert_filters()
     
@@ -278,7 +168,7 @@ def send_slack_temp_alerts():
         
         # Create a list of blocks for the Slack message
         blocks = [
-            {"type": "context", "elements": [{"type": "mrkdwn", "text": f"🔍 *Showing alerts from the last {context_unit_part}*"}]}
+            ContextBlock(elements=[MDText(text=f"🔍 *Showing alerts from the last {context_unit_part}*")]),
         ]
         
         for alert_type in alerts_types:
@@ -291,20 +181,20 @@ def send_slack_temp_alerts():
                     continue
 
                 alerts_processed += _df.shape[0]
-                _df['samsara_temp_time'] = _df['samsara_temp_time'].dt.tz_convert(CHICAGO_TZ).dt.strftime(dt_format_str)
+                _df['samsara_temp_time'] = _df['samsara_temp_time'].dt.tz_convert(CHICAGO_TZ).dt.strftime(HUMAN_DATETIME_FORMAT)
                 
-                blocks.append({"type": "header", "text": {"type": "plain_text", "text": alert_type, "emoji": True}})
-                blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Total Alerts: {_df.shape[0]}"}]})
+                blocks.append(HeaderBlock(text=PlainText(text=alert_type, emoji=True)))
+                blocks.append(ContextBlock(elements=[PlainText(text=f"Total Alerts: {_df.shape[0]}", emoji=False)]))
 
                 # Process each alert individually to add mute buttons
                 for _, row in _df.iterrows():
                     alert_message = message_processor(template.format(**row))
-                    blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": alert_message}})
+                    blocks.append(SectionBlock(text=MDText(text=alert_message)))
                     
                     # Add mute/unmute buttons for each alert (using both trip_id and trailer_id)
-                    blocks.append(create_mute_actions(row['trip_id'], row['trailer_id']))
+                    blocks.append(create_mute_actions((row['trip_id'], row['trailer_id']), channel))
 
-                blocks.append({"type": "divider"})
+                blocks.append(DividerBlock())
 
         # If no alerts were processed after all filters, don't send a message
         if not alerts_processed:
@@ -313,40 +203,180 @@ def send_slack_temp_alerts():
             continue 
 
         # Remove the last divider for a cleaner look
-        if blocks[-1]["type"] == "divider":
+        if isinstance(blocks[-1], DividerBlock):
             blocks.pop()
 
         # Add a human-readable timestamp to the message
-        current_time = datetime.now(CHICAGO_TZ).strftime(dt_format_str)
-        blocks.append({"type": "context", "elements": [{"type": "plain_text", "text": f"Alerts generated at: {current_time}"}]})
+        blocks.append(get_generated_at())
         
         # Add management actions at the end
-        blocks.append({
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "📋 View Muted List", "emoji": True},
-                    "style": "primary",
-                    "url": f"{settings.CLOUD_RUN_URL}/webhook/alerts/slack/muted?channel={channel.replace('#', '')}&token={settings.WEBHOOK_TOKEN}",
-                    "action_id": "view_muted_list"
-                }
-            ]
-        })
-        
-        print("blocks:", blocks)
+        blocks.append(get_muted_list_section(channel))
 
-        payload = {
-            "channel": channel,
-            "blocks": blocks,
-            "text": "Temperature Alerts" # Fallback text for notifications
-        }
-        headers = {
-            "Authorization": f"Bearer {SLACK_BOT_TOKEN}",
-            "Content-Type": "application/json"
-        }
-
-        slack_response = requests.post("https://slack.com/api/chat.postMessage", json=payload, headers=headers)
-        response[approach] = {"message": slack_response.text, "slack_status": slack_response.status_code}
+        # Send the Slack message
+        response[approach] = Payload(channel=channel, blocks=blocks, text="Temperature Alerts").post()
 
     return response
+
+
+def send_muted_entities(channel: str):
+    channel = channel if channel.startswith("#") else f"#{channel}"
+    muted_entities = get_excluded_alert_filters()
+    if not muted_entities:
+        # Send message indicating no muted entities
+        return send_empty_payload(
+            "📋 Muted Alerts List",
+            "✅ *No alerts are currently muted.*",
+            "No Muted Alerts",
+            channel,
+        )
+
+    # Create a map of idtype names to entity IDs
+    idtype_values_map: dict[str, list[str]] = defaultdict(list)
+    for filter in muted_entities:
+        idtype_values_map[filter.id_type.value].append(filter.entity_id)
+
+    # Create blocks for the Slack message
+    blocks = [
+        HeaderBlock(text=PlainText(text="📋 Muted Alerts List", emoji=True)),
+        ContextBlock(elements=[MDText(text=f"*Total muted entities:* {len(muted_entities)}")]),
+    ]
+
+    # Process each ID type and its entities
+    for id_type, entity_ids in idtype_values_map.items():
+        # Add section header for this ID type
+        blocks.append(
+            SectionBlock(
+                text=MDText(text=f"*🔇 Muted {id_type.title()}s ({len(entity_ids)}):*")
+            )
+        )
+        
+        # Add each entity with its unmute button
+        for entity_id in entity_ids:
+            # Create a section with the entity ID and unmute button
+            blocks.append(get_unmute_section(entity_id, channel))
+        
+        # Add divider between different ID types
+        blocks.append(DividerBlock())
+    
+    # Remove the last divider for cleaner appearance
+    if isinstance(blocks[-1], DividerBlock):
+        blocks.pop()
+    
+    # Add timestamp
+    blocks.append(get_generated_at())
+
+    return Payload(
+        channel=channel,
+        blocks=blocks,
+        text="Muted Alerts List"
+    ).post()
+
+
+def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel: str):
+    entity_type = get_id_type(entity_id)
+    if entity_type is None:
+        return None
+    toggle_entity_alert(entity_id, mute_type)
+    return Payload(
+        channel=channel,
+        blocks=[
+            SectionBlock(
+                text=MDText(text=f"Successfully *{mute_type.value}d* {entity_type.value.title()} `{entity_id}`")
+            )
+        ]
+    )
+
+
+# ------ Slack Message Helpers ------
+
+
+class ActionValue(NamedTuple):
+    id: str
+    mute_type: MuteEnum
+    channel: str
+
+    @classmethod
+    def from_value(cls, value):
+        if not isinstance(value, str) or value.count("/") != 2:
+            return None
+        mute_type, _id, channel = value.split("/")
+        return cls(_id, mute_type, channel)
+    
+    def to_value(self):
+        return f"{self.mute_type.value}/{self.id}/{self.channel}"
+
+class ActionId(Enum):
+    MUTE_ENTITY = "mute_entity"
+    UNMUTE_ENTITY = "unmute_entity"
+    MUTED_ENTITIES = "muted_entities"
+
+    @classmethod
+    def from_id(cls, value):
+        if not isinstance(value, str):
+            return None
+        return cls(value.lower().split("|")[0])
+    
+    def to_id(self):
+        return f"{self.value}|{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+
+
+def get_action_button(
+    entity_id: str, mute_type: MuteEnum, channel: str, btn_style=ButtonStyle.DANGER
+):
+    id_type = get_id_type(entity_id)
+    if id_type is None:
+        return None
+
+    emoji = "🔇" if mute_type == MuteEnum.MUTE else "🔊"
+    action_id = (
+        ActionId.MUTE_ENTITY if mute_type == MuteEnum.MUTE 
+        else ActionId.UNMUTE_ENTITY
+    ).to_id()
+
+    return Button(
+        text=PlainText(text=f"{emoji} {mute_type.value.title()} {id_type.value.title()}", emoji=True),
+        style=btn_style,
+        action_id=action_id,
+        value=ActionValue(entity_id, mute_type, channel).to_value(), 
+    )
+
+def create_mute_actions(entity_ids: list[str], channel: str):
+    """Create action buttons for muting/unmuting alerts by trip or trailer"""
+    return ActionsBlock(
+        elements=[
+            get_action_button(entity_id, MuteEnum.MUTE, channel, ButtonStyle.DANGER) 
+            for entity_id in entity_ids
+        ]
+    )
+
+def get_unmute_section(entity_id: str, channel: str):
+    return SectionBlock(
+        text=MDText(text=f"• `{entity_id}`"),
+        accessory=get_action_button(entity_id, MuteEnum.UNMUTE, channel, ButtonStyle.PRIMARY),
+    )
+
+def get_muted_list_section(channel: str):
+    return ActionsBlock(
+        elements=[
+            Button(
+                text=PlainText(text="📋 View Muted List", emoji=True),
+                action_id=ActionId.MUTED_ENTITIES.to_id(),
+                value=ActionValue("listview", MuteEnum.UNMUTE, channel).to_value(),
+                style=ButtonStyle.PRIMARY,
+            )
+        ]
+    )
+
+def get_generated_at():
+    iso_dt = datetime.now(CHICAGO_TZ).strftime(HUMAN_DATETIME_FORMAT)
+    return ContextBlock(elements=[MDText(text=f"Generated at: {iso_dt}")])
+
+def send_empty_payload(header: str, desc: str, footer: str, channel: str):
+    return Payload(
+        channel=channel,
+        blocks=[
+            HeaderBlock(text=PlainText(text=header, emoji=True)),
+            SectionBlock(text=MDText(text=desc)),
+        ],
+        text=footer,
+    ).post()

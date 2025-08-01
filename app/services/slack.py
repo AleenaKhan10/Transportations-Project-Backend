@@ -2,13 +2,20 @@ import json
 import time
 import hmac
 import hashlib
-from fastapi import APIRouter, Request, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Request, HTTPException, Response
+
+from helpers import logger
+from config import settings
+from models.alert_filter import MuteEnum
+from logic.alerts import (
+    toggle_entity_alert_and_notify,
+    send_muted_entities,
+    ActionValue,
+    ActionId,
+)
+
 
 router = APIRouter(prefix="/slack")
-
-
-# TODO: Replace this once testing is done
-SLACK_SIGNING_SECRET = "SLACK_SIGNING_SECRET"
 
 # --- Security: Slack Request Verification ---
 
@@ -36,18 +43,18 @@ async def verify_slack_request(request: Request):
     
     # Hash the base string with your signing secret
     my_signature = 'v0=' + hmac.new(
-        SLACK_SIGNING_SECRET.encode('utf-8'),
+        settings.SLACK_SIGNING_SECRET.encode('utf-8'),
         base_string,
         hashlib.sha256
     ).hexdigest()
 
-    # Compare your signature with the one from Slack
+    # Compare signature with the one from Slack
     if not hmac.compare_digest(my_signature, slack_signature):
         raise HTTPException(status_code=403, detail="Slack signature verification failed.")
 
 
 @router.post("/interactions")
-async def slack_interactive_endpoint(request: Request):
+async def slack_interactive_endpoint(request: Request, bt: BackgroundTasks = BackgroundTasks()):
     """
     This endpoint handles all interactive components from Slack,
     such as button clicks.
@@ -63,34 +70,33 @@ async def slack_interactive_endpoint(request: Request):
     if not payload_str:
         raise HTTPException(status_code=400, detail="Payload not found.")
     
-    payload = json.loads(payload_str)
-    
-    # NOTE: send the data to webhook site (testing purposes only)
-    import os
-    webhook_url = os.getenv("WEBHOOKSITE_URL")
-    if webhook_url:
-        import requests
-        requests.post(webhook_url, json=payload)
+    payload: dict = json.loads(payload_str)
 
     # 3. Check if the interaction is a button click in a block
     if payload.get("type") == "block_actions":
         # There can be multiple actions, but for our case, we only expect one.
-        action = payload["actions"][0]
-        action_id = action.get("action_id")
-        value = action.get("value") # This is the entity_id (e.g., trip_id, trailer_id)
+        action: dict = payload["actions"][0]
+        action_id = ActionId.from_id(action.get("action_id"))
+        value = ActionValue.from_value(action.get("value"))
+        
+        logger.info(f"Received action: '{action_id}' with value: '{value}'")
+        
+        if not action_id or not value:
+            raise HTTPException(status_code=400, detail="Action ID or Value not found.")
 
-        print(f"Received action: '{action_id}' with value: '{value}'")
-
-    #     # 4. Route the action to the appropriate business logic
-    #     if action_id == "mute_trip":
-    #         mute_logic(entity_type="Trip", entity_id=value)
-    #     elif action_id == "mute_trailer":
-    #         mute_logic(entity_type="Trailer", entity_id=value)
-    #     elif action_id == "unmute_entity":
-    #         unmute_logic(entity_id=value)
-    #     else:
-    #         # Handle unknown actions if necessary
-    #         print(f"⚠️ Received unknown action_id: {action_id}")
+        # 4. Route the action to the appropriate business logic
+        if action_id in (ActionId.MUTE_ENTITY, ActionId.UNMUTE_ENTITY):
+            bt.add_task(
+                toggle_entity_alert_and_notify, 
+                entity_id=value.id, 
+                mute=value.mute_type == MuteEnum.MUTE,
+                channel=value.channel,
+            )
+        elif action_id == ActionId.MUTED_ENTITIES:
+            bt.add_task(send_muted_entities, channel=value.channel)
+        else:
+            # Handle unknown actions if necessary
+            logger.warning(f"⚠️ Received unknown action_id: {action_id}")
 
     # # 5. Acknowledge the request with a 200 OK to Slack within 3 seconds
     return Response(status_code=200)
