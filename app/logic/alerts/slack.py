@@ -284,7 +284,7 @@ def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel:
                 text=MDText(text=f"Successfully *{mute_type.value}d* {entity_type.value.title()} `{entity_id}`")
             )
         ]
-    )
+    ).post()
 
 
 # ------ Slack Message Helpers ------
