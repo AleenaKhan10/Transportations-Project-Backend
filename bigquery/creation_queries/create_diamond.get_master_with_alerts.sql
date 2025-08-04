@@ -74,7 +74,7 @@ classified AS (
             THEN '🚨 Temperature Out of Range'
           WHEN required_reefer_mode_id IN (1, 2) 
             AND reefer_mode_id = 0 
-            -- AND ABS(samsara_temp - required_temp) > max_allowed_deviation -- NOTE: even if the temp is within limit, keeping the reefer off might be problematic
+            AND ABS(samsara_temp - required_temp) > max_allowed_deviation -- NOTE: even if the temp is within limit, keeping the reefer off might be problematic
             THEN '‼️ Attention / Issue ‼️'
           ELSE NULL
         END
