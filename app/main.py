@@ -12,6 +12,15 @@ from services.vapi import router as vapi_router, router_no_auth as vapi_router_n
 from services.reports import router as reports_router
 from services.pcmiler import router as pcmiler_router
 from services.slack import router as slack_router
+
+# Import new admin routers
+from services.admin_users import router as admin_users_router
+from services.admin_roles import router as admin_roles_router
+from services.admin_permissions import router as admin_permissions_router
+from services.admin_sessions import router as admin_sessions_router
+from services.admin_audit import router as admin_audit_router
+from services.admin_export import router as admin_export_router
+
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -30,6 +39,7 @@ app.add_middleware(
 
 app.add_event_handler("startup", create_db_and_tables)
 
+# Include existing routers
 app.include_router(auth_router, tags=["auth"])
 app.include_router(trip_router, tags=["trips"])
 app.include_router(ingest_router, tags=["ingest"])
@@ -41,6 +51,14 @@ app.include_router(reports_router, tags=["reports"])
 app.include_router(pcmiler_router, tags=["pcmiler"])
 app.include_router(webhook_router, tags=["webhook"])
 app.include_router(slack_router, tags=["slack"])
+
+# Include new admin routers
+app.include_router(admin_users_router)
+app.include_router(admin_roles_router)
+app.include_router(admin_permissions_router)
+app.include_router(admin_sessions_router)
+app.include_router(admin_audit_router)
+app.include_router(admin_export_router)
 
 if __name__ == "__main__":
     import uvicorn
