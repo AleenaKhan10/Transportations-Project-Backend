@@ -13,48 +13,71 @@ from models.user import (
 from logic.auth.service import UserService, RoleService, AuditService
 from logic.auth.security import (
     require_user_management, require_user_view, get_current_active_user,
-    audit_log, rate_limit
+    audit_log, rate_limit, oauth2_scheme
 )
 from db.database import engine
 
 router = APIRouter(prefix="/admin", tags=["admin-users"])
 
 def build_user_response(user: User) -> UserResponse:
-    """Build user response with roles and permissions"""
-    roles = UserService.get_user_roles(user.id)
-    permissions = UserService.get_user_permissions(user.id)
-    
-    role_response = None
-    if roles:
-        role = roles[0]  # Assuming single role per user for now
-        role_permissions = RoleService.get_role_permissions(role.id)
-        role_response = RoleResponse(
-            id=role.id,
-            name=role.name,
-            description=role.description,
-            permissions=role_permissions
+    """Build user response with roles and permissions - FAST VERSION"""
+    with Session(engine) as session:
+        # Single optimized query to get user roles and permissions
+        from models.user import UserRole, Role, RolePermission, Permission
+        
+        # Get user role with permissions in a single query
+        role_query = (
+            select(Role, Permission)
+            .join(UserRole, Role.id == UserRole.role_id)
+            .outerjoin(RolePermission, Role.id == RolePermission.role_id)
+            .outerjoin(Permission, RolePermission.permission_id == Permission.id)
+            .where(UserRole.user_id == user.id)
         )
+        
+        results = session.exec(role_query).all()
+        
+        role_response = None
+        permission_names = []
+        
+        if results:
+            # Group results by role (assuming single role per user)
+            role_data = results[0][0] if results[0][0] else None  # First role
+            
+            if role_data:
+                # Collect unique permission names
+                unique_permissions = set()
+                for role, perm in results:
+                    if perm and perm.name:  # Check if permission exists
+                        unique_permissions.add(perm.name)
+                
+                permission_names = list(unique_permissions)
+                
+                role_response = RoleResponse(
+                    id=role_data.id,
+                    name=role_data.name,
+                    description=role_data.description or "",
+                    permissions=permission_names
+                )
     
     return UserResponse(
         id=user.id,
         username=user.username,
-        email=user.email,
-        full_name=user.full_name,
+        email=user.email or "",  # Provide default empty string if None
+        full_name=user.full_name or user.username,  # Provide default if None
         phone=user.phone,
         avatar=user.avatar,
-        status=user.status,
+        status=user.status or "active",  # Provide default status if None
         department=user.department,
         role=role_response,
-        permissions=permissions,
-        two_factor_enabled=user.two_factor_enabled,
-        email_verified=user.email_verified,
+        permissions=permission_names,
+        two_factor_enabled=user.two_factor_enabled or False,  # Provide default if None
+        email_verified=user.email_verified or False,  # Provide default if None
         last_login_at=user.last_login_at,
-        created_at=user.created_at,
-        updated_at=user.updated_at
+        created_at=user.created_at or datetime.utcnow(),  # Provide default if None
+        updated_at=user.updated_at or datetime.utcnow()  # Provide default if None
     )
 
 @router.get("/users")
-@audit_log("list", "users")
 async def get_users(
     request: Request,
     page: int = Query(1, ge=1),
@@ -99,8 +122,72 @@ async def get_users(
         
         users = session.exec(query).all()
         
-        # Build response
-        user_responses = [build_user_response(user) for user in users]
+        # Build response - batch process for better performance
+        user_responses = []
+        
+        # Batch fetch all user roles and permissions to reduce queries
+        user_ids = [user.id for user in users]
+        
+        if user_ids:
+            from models.user import UserRole, Role, RolePermission, Permission
+            
+            # Single query to get all roles and permissions for all users
+            roles_perms_query = (
+                select(UserRole.user_id, Role, Permission)
+                .join(Role, UserRole.role_id == Role.id)
+                .outerjoin(RolePermission, Role.id == RolePermission.role_id)
+                .outerjoin(Permission, RolePermission.permission_id == Permission.id)
+                .where(UserRole.user_id.in_(user_ids))
+            )
+            
+            batch_results = session.exec(roles_perms_query).all()
+            
+            # Group results by user_id
+            user_roles_perms = {}
+            for user_id, role, perm in batch_results:
+                if user_id not in user_roles_perms:
+                    user_roles_perms[user_id] = {"role": role, "permissions": set()}
+                if perm:
+                    user_roles_perms[user_id]["permissions"].add(perm.name)
+            
+            # Build responses using cached data
+            for user in users:
+                role_data = user_roles_perms.get(user.id)
+                role_response = None
+                permission_names = []
+                
+                if role_data:
+                    role = role_data["role"]
+                    permission_names = list(role_data["permissions"])
+                    
+                    if role:
+                        role_response = RoleResponse(
+                            id=role.id,
+                            name=role.name,
+                            description=role.description or "",
+                            permissions=permission_names
+                        )
+                
+                user_responses.append(UserResponse(
+                    id=user.id,
+                    username=user.username,
+                    email=user.email or "",
+                    full_name=user.full_name or user.username,
+                    phone=user.phone,
+                    avatar=user.avatar,
+                    status=user.status or "active",
+                    department=user.department,
+                    role=role_response,
+                    permissions=permission_names,
+                    two_factor_enabled=user.two_factor_enabled or False,
+                    email_verified=user.email_verified or False,
+                    last_login_at=user.last_login_at,
+                    created_at=user.created_at or datetime.utcnow(),
+                    updated_at=user.updated_at or datetime.utcnow()
+                ))
+        else:
+            # No users found
+            user_responses = []
         
         return {
             "users": user_responses,
@@ -110,163 +197,7 @@ async def get_users(
             "total_pages": ceil(total / limit)
         }
 
-@router.get("/users/{user_id}", response_model=UserResponse)
-@audit_log("view", "users")
-async def get_user(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_view)
-):
-    """Get user by ID"""
-    user = UserService.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return build_user_response(user)
-
-@router.put("/users/{user_id}", response_model=UserResponse)
-@audit_log("update", "users")
-async def update_user(
-    request: Request,
-    user_id: int,
-    user_data: UserUpdate,
-    current_user: User = Depends(require_user_management)
-):
-    """Update user"""
-    user = UserService.update_user(user_id, user_data, updated_by=current_user.id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return build_user_response(user)
-
-@router.delete("/users/{user_id}")
-@audit_log("delete", "users")
-async def delete_user(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_management)
-):
-    """Delete user"""
-    if user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete your own account"
-        )
-    
-    success = UserService.delete_user(user_id, deleted_by=current_user.id)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return {"message": "User deleted successfully"}
-
-@router.post("/users/{user_id}/suspend")
-@audit_log("suspend", "users")
-async def suspend_user(
-    request: Request,
-    user_id: int,
-    reason: str,
-    current_user: User = Depends(require_user_management)
-):
-    """Suspend user"""
-    if user_id == current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot suspend your own account"
-        )
-    
-    user_data = UserUpdate(status=UserStatus.SUSPENDED)
-    user = UserService.update_user(user_id, user_data, updated_by=current_user.id)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # Log suspension reason
-    AuditService.log_action(
-        user_id=current_user.id,
-        action="suspend",
-        resource="users",
-        resource_id=str(user_id),
-        new_values={"reason": reason},
-        ip_address=request.client.host,
-        user_agent=request.headers.get("User-Agent")
-    )
-    
-    return {"message": "User suspended successfully"}
-
-@router.post("/users/{user_id}/activate")
-@audit_log("activate", "users")
-async def activate_user(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_management)
-):
-    """Activate user"""
-    user_data = UserUpdate(status=UserStatus.ACTIVE)
-    user = UserService.update_user(user_id, user_data, updated_by=current_user.id)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return {"message": "User activated successfully"}
-
-@router.post("/users/{user_id}/reset-password")
-@audit_log("password_reset", "users")
-async def admin_reset_password(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_management)
-):
-    """Admin reset user password"""
-    import secrets
-    import string
-    
-    # Generate temporary password
-    alphabet = string.ascii_letters + string.digits
-    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-    
-    # Hash and update password
-    user = UserService.get_user_by_id(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # In production, you would update the password here
-    # user.password_hash = UserService.hash_password(temp_password)
-    
-    return {"temporary_password": temp_password}
-
-@router.post("/users/{user_id}/force-logout")
-@audit_log("force_logout", "users")
-async def force_logout_user(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_management)
-):
-    """Force logout user (terminate all sessions)"""
-    # In production, invalidate all user sessions
-    # SessionService.invalidate_user_sessions(user_id)
-    
-    return {"message": "User sessions terminated successfully"}
-
 @router.get("/users/stats", response_model=UserStats)
-@audit_log("stats", "users")
 async def get_user_stats(
     request: Request,
     current_user: User = Depends(require_user_view)
@@ -289,6 +220,14 @@ async def get_user_stats(
             select(func.count(User.id)).where(User.last_login_at >= recent_cutoff)
         ).one()
         
+        # Count active sessions
+        from models.user import UserSession
+        active_sessions = session.exec(
+            select(func.count(UserSession.id))
+            .where(UserSession.is_active == True)
+            .where(UserSession.expires_at > datetime.utcnow())
+        ).one()
+        
         return UserStats(
             total_users=total_users,
             active_users=active_users,
@@ -296,12 +235,808 @@ async def get_user_stats(
             suspended_users=suspended_users,
             pending_users=pending_users,
             total_roles=total_roles,
-            active_sessions=0,  # Placeholder - implement with session tracking
+            active_sessions=active_sessions,  # Now shows actual active sessions
             recent_logins=recent_logins
         )
 
+@router.get("/users/{user_id}", response_model=UserResponse)
+async def get_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_view)
+):
+    """Get user by ID - FAST VERSION"""
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        return build_user_response(user)
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    request: Request,
+    user_id: int,
+    user_data: UserUpdate,
+    current_user: User = Depends(require_user_management)
+):
+    """Update user - FAST VERSION"""
+    with Session(engine) as session:
+        # Single query to get user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Store old values for audit
+        old_values = {
+            "email": user.email,
+            "full_name": user.full_name,
+            "phone": user.phone,
+            "status": user.status,
+            "department": user.department
+        }
+        
+        # Update user fields directly - no separate service call
+        update_data = user_data.dict(exclude_unset=True, exclude={"role_id"})
+        for field, value in update_data.items():
+            if hasattr(user, field):
+                setattr(user, field, value)
+        
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        
+        # Update role if provided - fast version
+        if user_data.role_id:
+            # Remove existing roles
+            from models.user import UserRole
+            existing_roles = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
+            for role in existing_roles:
+                session.delete(role)
+            
+            # Add new role
+            user_role = UserRole(
+                user_id=user_id,
+                role_id=user_data.role_id,
+                assigned_by=current_user.id
+            )
+            session.add(user_role)
+        
+        session.commit()
+        session.refresh(user)
+        
+        # Build new values for audit
+        new_values = update_data.copy()
+        if user_data.role_id:
+            new_values["role_id"] = user_data.role_id
+        
+        # Fast audit log without extra queries
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_updated",
+            resource="users",
+            resource_id=str(user_id),
+            old_values=old_values,
+            new_values=new_values,
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+        
+        return build_user_response(user)
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Delete user"""
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete your own account"
+        )
+    
+    # Get user data before deletion for audit
+    user_to_delete = UserService.get_user_by_id(user_id)
+    if not user_to_delete:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    old_values = {
+        "username": user_to_delete.username,
+        "email": user_to_delete.email,
+        "full_name": user_to_delete.full_name,
+        "status": user_to_delete.status
+    }
+    
+    success = UserService.delete_user(user_id, deleted_by=current_user.id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Log user deletion - this IS a business event
+    from logic.auth.service import AuditService
+    AuditService.log_business_event(
+        user_id=current_user.id,
+        action="user_deleted",
+        resource="users",
+        resource_id=str(user_id),
+        old_values=old_values,
+        new_values=None,
+        ip_address=request.client.host,
+        user_agent=request.headers.get("User-Agent"),
+        status="success"
+    )
+    
+    return {"message": "User deleted successfully"}
+
+@router.post("/users/{user_id}/suspend")
+async def suspend_user(
+    request: Request,
+    user_id: int,
+    reason: str = Query(..., description="Reason for suspension"),
+    current_user: User = Depends(require_user_management)
+):
+    """Suspend user - FAST VERSION"""
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot suspend your own account"
+        )
+    
+    with Session(engine) as session:
+        # Single query to get and update user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        old_status = user.status
+        old_username = user.username
+        
+        # Direct update - no separate service call
+        user.status = "suspended"
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Fast audit log without extra queries
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_suspended",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"status": old_status, "username": old_username},
+            new_values={
+                "status": "suspended",
+                "reason": reason,
+                "suspended_by": current_user.username
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {"message": "User suspended successfully"}
+
+@router.post("/users/{user_id}/activate")
+async def activate_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Activate user - FAST VERSION"""
+    with Session(engine) as session:
+        # Single query to get and update user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        old_status = user.status
+        
+        # Direct update - no separate service call
+        user.status = "active"
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Fast audit log without extra queries
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_activated",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"status": old_status},
+            new_values={"status": "active", "activated_by": current_user.username},
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {"message": "User activated successfully"}
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Approve pending user - FAST VERSION"""
+    with Session(engine) as session:
+        # Single query to get and update user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        if user.status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not in pending status"
+            )
+        
+        old_status = user.status
+        old_username = user.username
+        
+        # Direct update - no separate service call
+        user.status = "active"
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Fast audit log without extra queries
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_approved",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"status": old_status, "username": old_username},
+            new_values={
+                "status": "active",
+                "approved_by": current_user.username,
+                "approval_date": datetime.utcnow().isoformat()
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {"message": "User approved successfully"}
+
+@router.post("/users/{user_id}/reject")
+async def reject_user(
+    request: Request,
+    user_id: int,
+    reason: str = Query(None, description="Reason for rejection"),
+    current_user: User = Depends(require_user_management)
+):
+    """Reject pending user (sets status to suspended) - FAST VERSION"""
+    with Session(engine) as session:
+        # Single query to get and update user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        if user.status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is not in pending status"
+            )
+        
+        old_status = user.status
+        old_username = user.username
+        
+        # Direct update - no separate service call
+        user.status = "suspended"  # We use suspended for rejected users
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Fast audit log without extra queries
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_rejected",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"status": old_status, "username": old_username},
+            new_values={
+                "status": "suspended",  # We use suspended for rejected users
+                "rejected_by": current_user.username,
+                "rejection_reason": reason or "No reason provided",
+                "rejection_date": datetime.utcnow().isoformat()
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {"message": "User rejected successfully"}
+
+@router.post("/users/{user_id}/reset-password")
+async def admin_reset_password(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Admin reset user password - WORKING VERSION"""
+    import secrets
+    import string
+    
+    # Generate temporary password
+    alphabet = string.ascii_letters + string.digits
+    temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+    
+    with Session(engine) as session:
+        # Get user
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Hash and update password in database
+        from logic.auth.service import UserService
+        hashed_password = UserService.hash_password(temp_password)
+        user.password = hashed_password
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Log password reset - this IS a business event
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="password_reset_by_admin",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"username": user.username},
+            new_values={
+                "password_reset_by": current_user.username,
+                "reset_date": datetime.utcnow().isoformat()
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {
+        "message": "Password reset successfully",
+        "temporary_password": temp_password,
+        "note": "User can login with this temporary password and should change it immediately"
+    }
+
+@router.get("/users/{user_id}/sessions")
+async def get_user_sessions(
+    request: Request,
+    user_id: int,
+    include_inactive: bool = Query(False, description="Include terminated sessions for history"),
+    current_user: User = Depends(require_user_view)
+):
+    """Get sessions for a specific user (active by default, or all if include_inactive=true)"""
+    with Session(engine) as session:
+        from models.user import UserSession
+        
+        # Build query for user sessions
+        query = (
+            select(UserSession)
+            .where(UserSession.user_id == user_id)
+            .order_by(UserSession.last_activity.desc())
+        )
+        
+        # Apply filters based on include_inactive parameter
+        if not include_inactive:
+            # Default: only active and non-expired sessions
+            query = query.where(UserSession.is_active == True).where(UserSession.expires_at > datetime.utcnow())
+        # If include_inactive=true, show all sessions (active and terminated)
+        
+        user_sessions = session.exec(query).all()
+        
+        sessions = []
+        for sess in user_sessions:
+            sessions.append({
+                "session_id": sess.id,
+                "ip_address": sess.ip_address,
+                "user_agent": sess.user_agent,
+                "created_at": sess.created_at,
+                "last_activity": sess.last_activity,
+                "expires_at": sess.expires_at,
+                "is_active": sess.is_active,  # Include is_active field
+                "is_current": False  # We don't track current session in this simple implementation
+            })
+        
+        return {
+            "user_id": user_id,
+            "sessions": sessions,
+            "total_sessions": len(sessions),
+            "include_inactive": include_inactive
+        }
+
+@router.get("/sessions/all")
+async def get_all_active_sessions(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    include_inactive: bool = Query(False, description="Include terminated sessions for history"),
+    current_user: User = Depends(require_user_view)
+):
+    """Get all sessions across all users (active by default, or all if include_inactive=true)"""
+    with Session(engine) as session:
+        from models.user import UserSession
+        
+        # Query for sessions with user info
+        query = (
+            select(UserSession, User)
+            .join(User, UserSession.user_id == User.id)
+            .order_by(UserSession.last_activity.desc())
+        )
+        
+        # Apply filters based on include_inactive parameter
+        if not include_inactive:
+            # Default: only active and non-expired sessions
+            query = query.where(UserSession.is_active == True).where(UserSession.expires_at > datetime.utcnow())
+        # If include_inactive=true, show all sessions (active and terminated)
+        
+        # Get total count
+        count_query = select(func.count()).select_from(query.subquery())
+        total = session.exec(count_query).one()
+        
+        # Apply pagination
+        offset = (page - 1) * limit
+        query = query.offset(offset).limit(limit)
+        
+        results = session.exec(query).all()
+        
+        sessions = []
+        for user_session, user in results:
+            sessions.append({
+                "session_id": user_session.id,
+                "user_id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "ip_address": user_session.ip_address,
+                "user_agent": user_session.user_agent,
+                "created_at": user_session.created_at,
+                "last_activity": user_session.last_activity,
+                "expires_at": user_session.expires_at,
+                "is_active": user_session.is_active  # Include is_active field
+            })
+        
+        return {
+            "sessions": sessions,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": ceil(total / limit)
+        }
+
+@router.post("/users/{user_id}/force-logout")
+async def force_logout_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Force logout user (terminate all sessions) with token blacklisting"""
+    with Session(engine) as session:
+        from models.user import UserSession
+        from logic.auth.service import AuditService, TokenBlacklistService
+        
+        # Get user info for logging
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Use TokenBlacklistService to blacklist all user tokens
+        sessions_terminated = TokenBlacklistService.blacklist_all_user_tokens(
+            user_id=user_id,
+            reason="admin_force_logout",
+            blacklisted_by=current_user.id
+        )
+        
+        # Log session termination - this IS a business event
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="session_terminated",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"username": user.username},
+            new_values={
+                "terminated_by": current_user.username,
+                "sessions_terminated": sessions_terminated,
+                "termination_date": datetime.utcnow().isoformat(),
+                "method": "token_blacklisting"
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {
+        "message": "User sessions terminated successfully",
+        "sessions_terminated": sessions_terminated
+    }
+
+@router.post("/sessions/{session_id}/terminate")
+async def terminate_single_session(
+    request: Request,
+    session_id: str,
+    current_user: User = Depends(require_user_management)
+):
+    """Terminate a single session by session ID with token blacklisting"""
+    with Session(engine) as session:
+        from models.user import UserSession
+        from logic.auth.service import AuditService, TokenBlacklistService
+        
+        # Find the session
+        user_session = session.get(UserSession, session_id)
+        if not user_session:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        # Get user info for logging
+        user = session.get(User, user_session.user_id)
+        
+        # Use TokenBlacklistService to blacklist all user tokens
+        # Since we don't have JWT ID per session yet, this affects all user tokens
+        sessions_terminated = TokenBlacklistService.blacklist_all_user_tokens(
+            user_id=user_session.user_id,
+            reason="admin_session_termination",
+            blacklisted_by=current_user.id
+        )
+        
+        # Log session termination
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="session_terminated",
+            resource="sessions",
+            resource_id=session_id,
+            old_values={
+                "session_id": session_id,
+                "target_user": user.username if user else "unknown"
+            },
+            new_values={
+                "terminated_by": current_user.username,
+                "termination_date": datetime.utcnow().isoformat(),
+                "sessions_affected": sessions_terminated,
+                "method": "token_blacklisting"
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {
+        "message": "Session terminated successfully", 
+        "sessions_affected": sessions_terminated,
+        "note": "All user tokens invalidated via blacklist"
+    }
+
+@router.post("/sessions/blacklist-current-token")
+async def blacklist_current_token(
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    current_user: User = Depends(require_user_management)
+):
+    """Blacklist the current token being used (for testing)"""
+    from logic.auth.security import get_jwt_id_from_token
+    from logic.auth.service import TokenBlacklistService, AuditService
+    from jose import jwt
+    from config import settings
+    
+    jti = get_jwt_id_from_token(token)
+    
+    if not jti:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token does not have JWT ID"
+        )
+    
+    # Get token expiration  
+    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    exp_timestamp = payload.get("exp", 0)
+    expires_at = datetime.utcfromtimestamp(exp_timestamp)  # Use UTC timestamp
+    
+    # Blacklist the token
+    TokenBlacklistService.blacklist_token(
+        jti=jti,
+        user_id=current_user.id,
+        expires_at=expires_at,
+        reason="admin_blacklist_test",
+        blacklisted_by=current_user.id
+    )
+    
+    
+    # Log the blacklisting
+    AuditService.log_business_event(
+        user_id=current_user.id,
+        action="token_blacklisted",
+        resource="tokens",
+        resource_id=jti,
+        new_values={
+            "blacklisted_by": current_user.username,
+            "reason": "admin_blacklist_test",
+            "expires_at": expires_at.isoformat()
+        },
+        ip_address=request.client.host,
+        user_agent=request.headers.get("User-Agent"),
+        status="success"
+    )
+    
+    return {
+        "message": "Token blacklisted successfully",
+        "jti": jti,
+        "note": "This token should no longer work for authentication"
+    }
+
+@router.post("/users/{user_id}/restore-access")
+async def restore_user_access(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(require_user_management)
+):
+    """Restore user access by removing them from blacklist"""
+    with Session(engine) as session:
+        from logic.auth.service import AuditService, TokenBlacklistService
+        
+        # Get user info for logging
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Remove user from blacklist
+        removed_count = TokenBlacklistService.remove_user_blacklist(
+            user_id=user_id,
+            removed_by=current_user.id
+        )
+        
+        # Log access restoration
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_access_restored",
+            resource="users",
+            resource_id=str(user_id),
+            old_values={"username": user.username, "access_blocked": True},
+            new_values={
+                "restored_by": current_user.username,
+                "restoration_date": datetime.utcnow().isoformat(),
+                "blacklist_entries_removed": removed_count
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {
+        "message": "User access restored successfully",
+        "blacklist_entries_removed": removed_count
+    }
+
+
+@router.post("/sessions/cleanup-expired")
+async def cleanup_expired_sessions(
+    request: Request,
+    current_user: User = Depends(require_user_management)
+):
+    """Cleanup expired sessions (admin endpoint)"""
+    from logic.auth.service import SessionService, AuditService
+    
+    cleanup_count = SessionService.cleanup_expired_sessions()
+    
+    # Log session cleanup - this IS a business event
+    AuditService.log_business_event(
+        user_id=current_user.id,
+        action="sessions_cleanup",
+        resource="sessions",
+        resource_id="expired",
+        new_values={
+            "cleanup_by": current_user.username,
+            "sessions_cleaned": cleanup_count,
+            "cleanup_date": datetime.utcnow().isoformat()
+        },
+        ip_address=request.client.host,
+        user_agent=request.headers.get("User-Agent"),
+        status="success"
+    )
+    
+    return {
+        "message": "Expired sessions cleanup completed",
+        "sessions_cleaned": cleanup_count
+    }
+
+@router.post("/users/change-password")
+async def change_password(
+    request: Request,
+    current_password: str = Query(..., description="Current password"),
+    new_password: str = Query(..., description="New password"),
+    current_user: User = Depends(get_current_active_user)
+):
+    """User change their own password"""
+    from logic.auth.service import UserService
+    
+    # Verify current password
+    if not UserService.verify_password(current_password, current_user.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect"
+        )
+    
+    # Validate new password (basic validation)
+    if len(new_password) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long"
+        )
+    
+    with Session(engine) as session:
+        # Get user and update password
+        user = session.get(User, current_user.id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Hash and update password
+        hashed_password = UserService.hash_password(new_password)
+        user.password = hashed_password
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        
+        # Log password change - this IS a business event
+        from logic.auth.service import AuditService
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="password_changed",
+            resource="auth",
+            resource_id=str(current_user.id),
+            old_values={"username": current_user.username},
+            new_values={
+                "password_changed_by": "self",
+                "change_date": datetime.utcnow().isoformat()
+            },
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+    
+    return {"message": "Password changed successfully"}
+
 @router.post("/users/bulk-update")
-@audit_log("bulk_update", "users")
 @rate_limit(max_requests=10, window_minutes=60)
 async def bulk_update_users(
     request: Request,
@@ -336,7 +1071,6 @@ async def bulk_update_users(
     return {"message": f"Successfully updated {updated_count} users"}
 
 @router.post("/users/bulk-delete")
-@audit_log("bulk_delete", "users")
 @rate_limit(max_requests=5, window_minutes=60)
 async def bulk_delete_users(
     request: Request,
