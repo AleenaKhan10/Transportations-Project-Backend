@@ -44,103 +44,110 @@ class UserLogin(SQLModel):
     password: str
     grant_type: str = "password"
 
-# Database Models
-class User(UserBase, table=True):
-    __tablename__ = "users"
+# User model matching exact production database structure
+class User(SQLModel, table=True):
+    __tablename__ = "user"  # Match production DB table name
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    password_hash: str = Field(max_length=255)
+    username: str = Field(max_length=255, unique=True)
+    email: Optional[str] = Field(max_length=255, default=None, unique=True)
+    full_name: Optional[str] = Field(max_length=255, default=None)
+    phone: Optional[str] = Field(max_length=20, default=None)
+    avatar: Optional[str] = Field(max_length=500, default=None)
+    status: Optional[str] = Field(default="active")  # enum('active','inactive','suspended','pending')
+    department: Optional[str] = Field(max_length=100, default=None)
+    two_factor_enabled: Optional[bool] = Field(default=False)
     two_factor_secret: Optional[str] = Field(max_length=100, default=None)
+    email_verified: Optional[bool] = Field(default=False)
     email_verification_token: Optional[str] = Field(max_length=255, default=None)
     password_reset_token: Optional[str] = Field(max_length=255, default=None)
     password_reset_expires: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    created_by: Optional[int] = Field(foreign_key="users.id", default=None)
-    
-    # Relationships
-    roles: List["UserRole"] = Relationship(
-        back_populates="user",
-        sa_relationship_kwargs={"foreign_keys": "[UserRole.user_id]"}
-    )
-    sessions: List["UserSession"] = Relationship(back_populates="user")
-    audit_logs: List["AuditLog"] = Relationship(back_populates="user")
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    created_by: Optional[int] = Field(default=None)  # NO foreign key constraint
+    deleted_at: Optional[datetime] = None
+    password: Optional[str] = Field(max_length=255, default=None)  # Password hash
+    is_active: bool = Field(default=True)
 
 class Role(SQLModel, table=True):
     __tablename__ = "roles"
     
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=100, unique=True, index=True)
+    slug: str = Field(max_length=100, unique=True, index=True)
     description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    users: List["UserRole"] = Relationship(back_populates="role")
-    permissions: List["RolePermission"] = Relationship(back_populates="role")
+    level: Optional[int] = Field(default=1)
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 class Permission(SQLModel, table=True):
     __tablename__ = "permissions"
     
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(max_length=100)
+    slug: str = Field(max_length=100, unique=True, index=True)
     resource: str = Field(max_length=50, index=True)
     action: str = Field(max_length=50)
     description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    roles: List["RolePermission"] = Relationship(back_populates="permission")
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 class UserRole(SQLModel, table=True):
     __tablename__ = "user_roles"
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="users.id")
-    role_id: int = Field(foreign_key="roles.id")
-    assigned_at: datetime = Field(default_factory=datetime.utcnow)
-    assigned_by: Optional[int] = Field(foreign_key="users.id", default=None)
-    
-    # Relationships
-    user: User = Relationship(
-        back_populates="roles",
-        sa_relationship_kwargs={"foreign_keys": "[UserRole.user_id]"}
-    )
-    role: Role = Relationship(back_populates="users")
+    user_id: int
+    role_id: int
+    assigned_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    assigned_by: Optional[int] = Field(default=None)
 
 class RolePermission(SQLModel, table=True):
     __tablename__ = "role_permissions"
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    role_id: int = Field(foreign_key="roles.id")
-    permission_id: int = Field(foreign_key="permissions.id")
-    granted_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    role: Role = Relationship(back_populates="permissions")
-    permission: Permission = Relationship(back_populates="roles")
+    role_id: int
+    permission_id: int
+    granted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 class UserSession(SQLModel, table=True):
     __tablename__ = "user_sessions"
     
     id: str = Field(primary_key=True, max_length=255)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    user_id: int = Field(index=True)
     ip_address: Optional[str] = Field(max_length=45, default=None)
     user_agent: Optional[str] = None
-    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    last_activity: Optional[datetime] = Field(default_factory=datetime.utcnow)
     expires_at: datetime = Field(index=True)
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    # jwt_id: Optional[str] = Field(max_length=255, default=None)  # TODO: Add to DB schema later
+
+class TokenBlacklist(SQLModel, table=True):
+    __tablename__ = "token_blacklist"
     
-    # Relationships
-    user: User = Relationship(back_populates="sessions")
+    id: Optional[int] = Field(default=None, primary_key=True)
+    jti: str = Field(max_length=255, unique=True, index=True)  # JWT ID
+    user_id: Optional[int] = Field(default=None, index=True)
+    blacklisted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    expires_at: datetime = Field(index=True)  # When token would naturally expire
+    reason: Optional[str] = Field(max_length=255, default=None)
+    blacklisted_by: Optional[int] = Field(default=None)  # Admin who blacklisted it
+
+class UserBlacklist(SQLModel, table=True):
+    __tablename__ = "user_blacklist"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(index=True)  # User whose tokens are blacklisted
+    blacklisted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    blacklisted_until: Optional[datetime] = None  # If None, blacklist all future tokens until manually removed
+    reason: Optional[str] = Field(max_length=255, default=None)
+    blacklisted_by: Optional[int] = Field(default=None)  # Admin who blacklisted the user
 
 class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_logs"
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: Optional[int] = Field(foreign_key="users.id", index=True, default=None)
+    user_id: Optional[int] = Field(index=True, default=None)
     user_email: Optional[str] = Field(max_length=255, default=None)
     action: str = Field(max_length=100, index=True)
     resource: str = Field(max_length=100, index=True)
@@ -149,12 +156,9 @@ class AuditLog(SQLModel, table=True):
     new_values: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     ip_address: Optional[str] = Field(max_length=45, default=None)
     user_agent: Optional[str] = None
-    status: AuditStatus = Field(default=AuditStatus.SUCCESS, index=True)
+    status: Optional[str] = Field(default="success", index=True)
     error_message: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
-    
-    # Relationships
-    user: Optional[User] = Relationship(back_populates="audit_logs")
+    timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow, index=True)
 
 # Response Models
 class RoleResponse(SQLModel):

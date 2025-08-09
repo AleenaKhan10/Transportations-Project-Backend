@@ -17,22 +17,30 @@ from db.database import engine
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=settings.TOKEN_ENDPOINT_PATH)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, jwt_id: Optional[str] = None):
+    import uuid
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    
+    # Add JWT ID for session tracking
+    jti = jwt_id or str(uuid.uuid4())
+    to_encode.update({"exp": expire, "jti": jti})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, jti
 
-def create_refresh_token(data: dict):
+def create_refresh_token(data: dict, jwt_id: Optional[str] = None):
+    import uuid
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(days=7)  # Refresh token expires in 7 days
-    to_encode.update({"exp": expire, "type": "refresh"})
+    
+    # Add JWT ID for session tracking
+    jti = jwt_id or str(uuid.uuid4())
+    to_encode.update({"exp": expire, "type": "refresh", "jti": jti})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
+    return encoded_jwt, jti
 
 def verify_refresh_token(token: str) -> Optional[str]:
     try:
@@ -45,6 +53,14 @@ def verify_refresh_token(token: str) -> Optional[str]:
     except JWTError:
         return None
 
+def get_jwt_id_from_token(token: str) -> Optional[str]:
+    """Extract JWT ID from token for session tracking"""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        return payload.get("jti")
+    except JWTError:
+        return None
+
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -54,14 +70,40 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         username: str = payload.get("sub")
+        jti: str = payload.get("jti")  # JWT ID
+        
         if username is None:
             raise credentials_exception
+        
+        # Check if token is blacklisted (CRITICAL for session termination)
+        if jti:
+            from logic.auth.service import TokenBlacklistService
+            # Check individual token blacklist
+            if TokenBlacklistService.is_token_blacklisted(jti):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            
+        
     except JWTError:
         raise credentials_exception
     
     user = UserService.get_user_by_username(username)
     if user is None or user.status != UserStatus.ACTIVE:
         raise credentials_exception
+    
+    # Check user-level token blacklist (for force logout) after user is found
+    if jti:
+        token_issued_at = datetime.utcfromtimestamp(payload.get("iat", 0))
+        if TokenBlacklistService.is_user_token_blacklisted(user.id, token_issued_at):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User session has been terminated by administrator",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    
     return user
 
 def get_current_active_user(current_user: User = Depends(get_current_user)):
@@ -77,9 +119,10 @@ class PermissionChecker:
     
     def __call__(self, current_user: User = Depends(get_current_active_user)):
         user_permissions = UserService.get_user_permissions(current_user.id)
+        user_permission_names = [perm.name for perm in user_permissions]
         
         # Check specific permission name
-        if self.required_permission and self.required_permission not in user_permissions:
+        if self.required_permission and self.required_permission not in user_permission_names:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission '{self.required_permission}' required"
@@ -94,7 +137,7 @@ class PermissionChecker:
                 (p.name for p in resource_permissions if p.action == self.required_action), 
                 None
             )
-            if required_perm and required_perm not in user_permissions:
+            if required_perm and required_perm not in user_permission_names:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Permission for '{self.required_action}' on '{self.required_resource}' required"

@@ -31,7 +31,6 @@ class AuditLogResponse(dict):
         self['timestamp'] = timestamp
 
 @router.get("/audit-logs")
-@audit_log("list", "audit")
 async def get_audit_logs(
     request: Request,
     user_id: Optional[int] = Query(None),
@@ -96,7 +95,7 @@ async def get_audit_logs(
                 changes=changes,
                 ip_address=log.ip_address,
                 user_agent=log.user_agent,
-                status=log.status.value if log.status else None,
+                status=log.status if log.status else None,
                 error_message=log.error_message,
                 timestamp=log.timestamp
             ))
@@ -110,7 +109,6 @@ async def get_audit_logs(
         }
 
 @router.get("/audit-logs/actions")
-@audit_log("list_actions", "audit")
 async def get_audit_actions(
     request: Request,
     current_user: User = Depends(require_audit_view)
@@ -121,7 +119,6 @@ async def get_audit_actions(
         return list(actions)
 
 @router.get("/audit-logs/resources")
-@audit_log("list_resources", "audit")
 async def get_audit_resources(
     request: Request,
     current_user: User = Depends(require_audit_view)
@@ -132,7 +129,6 @@ async def get_audit_resources(
         return list(resources)
 
 @router.get("/audit-logs/stats")
-@audit_log("stats", "audit")
 async def get_audit_stats(
     request: Request,
     days: int = Query(7, ge=1, le=90),
@@ -157,7 +153,7 @@ async def get_audit_stats(
             .where(
                 and_(
                     AuditLog.timestamp >= start_date,
-                    AuditLog.status == AuditStatus.SUCCESS
+                    AuditLog.status == "success"
                 )
             )
         ).one()
@@ -167,7 +163,7 @@ async def get_audit_stats(
             .where(
                 and_(
                     AuditLog.timestamp >= start_date,
-                    AuditLog.status == AuditStatus.FAILURE
+                    AuditLog.status == "failure"
                 )
             )
         ).one()
