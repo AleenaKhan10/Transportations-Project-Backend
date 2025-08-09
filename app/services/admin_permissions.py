@@ -3,8 +3,7 @@ from typing import List
 from fastapi import APIRouter, Depends, Request
 from sqlmodel import Session, select
 
-from models.user import User, Permission
-from logic.auth.service import PermissionService
+from models.user import User
 from logic.auth.security import get_current_active_user, audit_log
 from db.database import engine
 
@@ -25,19 +24,8 @@ async def get_permissions(
     request: Request,
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get all permissions"""
-    permissions = PermissionService.get_all_permissions()
-    
-    return [
-        PermissionResponse(
-            id=perm.id,
-            name=perm.name,
-            resource=perm.resource,
-            action=perm.action,
-            description=perm.description
-        )
-        for perm in permissions
-    ]
+    """Get all permissions - returns empty since permissions removed"""
+    return []
 
 @router.get("/permissions/resource/{resource}")
 @audit_log("list_by_resource", "permissions")
@@ -46,19 +34,8 @@ async def get_permissions_by_resource(
     resource: str,
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get permissions by resource"""
-    permissions = PermissionService.get_permissions_by_resource(resource)
-    
-    return [
-        PermissionResponse(
-            id=perm.id,
-            name=perm.name,
-            resource=perm.resource,
-            action=perm.action,
-            description=perm.description
-        )
-        for perm in permissions
-    ]
+    """Get permissions by resource - returns empty since permissions removed"""
+    return []
 
 @router.get("/permissions/resources")
 @audit_log("list_resources", "permissions")
@@ -66,7 +43,5 @@ async def get_permission_resources(
     request: Request,
     current_user: User = Depends(get_current_active_user)
 ):
-    """Get all unique permission resources"""
-    with Session(engine) as session:
-        resources = session.exec(select(Permission.resource).distinct()).all()
-        return list(resources)
+    """Get all unique permission resources - returns empty since permissions removed"""
+    return []

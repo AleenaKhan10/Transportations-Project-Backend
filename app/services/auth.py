@@ -5,8 +5,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 
 from config import settings
-from models.user import User, UserCreate, UserLogin, TokenResponse, UserResponse, RoleResponse
-from logic.auth.service import UserService, RoleService, AuditService
+from models.user import User, UserCreate, UserLogin, TokenResponse
+from logic.auth.service import UserService, AuditService
 from logic.auth.security import (
     create_access_token, create_refresh_token, verify_refresh_token,
     get_current_active_user, rate_limit, generate_reset_token, 
@@ -17,53 +17,14 @@ from logic.auth.security import (
 router = APIRouter(prefix=settings.AUTH_ROUTER_PREFIX)
 
 def build_user_response(user: User) -> dict:
-    """Build user response with roles and permissions for frontend"""
-    # Get user roles and permissions
-    try:
-        roles = UserService.get_user_roles(user.id)
-        permissions = UserService.get_user_permissions(user.id)
-        
-        # Get primary role (first role or highest level)
-        primary_role = None
-        if roles:
-            # Sort by level if available, otherwise take first
-            sorted_roles = sorted(roles, key=lambda r: getattr(r, 'level', 0), reverse=True)
-            primary_role = sorted_roles[0]
-        
-        # Build role response
-        role_response = None
-        if primary_role:
-            role_response = {
-                "id": primary_role.id,
-                "name": primary_role.name,
-                "slug": getattr(primary_role, 'slug', primary_role.name.lower().replace(' ', '_')),
-                "description": getattr(primary_role, 'description', '')
-            }
-        
-        # Build permissions response
-        permissions_response = []
-        for perm in permissions:
-            permissions_response.append({
-                "id": perm.id,
-                "name": perm.name,
-                "slug": getattr(perm, 'slug', perm.name.lower().replace(' ', '_')),
-                "resource": perm.resource,
-                "action": perm.action
-            })
-        
-    except Exception as e:
-        # Fallback if role/permission queries fail
-        print(f"Warning: Could not load roles/permissions for user {user.id}: {e}")
-        role_response = None
-        permissions_response = []
-    
+    """Build user response for frontend"""
     return {
         "id": user.id,
         "username": user.username,
-        "email": getattr(user, 'email', None) or user.username,  # Fallback to username
-        "fullName": getattr(user, 'full_name', None) or "Admin User",  # Frontend expects camelCase
-        "role": role_response,
-        "permissions": permissions_response,
+        "email": getattr(user, 'email', None) or user.username,
+        "fullName": getattr(user, 'full_name', None) or "Admin User",
+        "role": None,
+        "permissions": [],
         "status": getattr(user, 'status', 'active'),
         "is_active": getattr(user, 'is_active', True)
     }
