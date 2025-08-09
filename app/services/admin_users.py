@@ -7,10 +7,9 @@ from sqlmodel import Session, select, func, or_
 
 from config import settings
 from models.user import (
-    User, UserCreate, UserUpdate, UserResponse, UserStats, UserStatus,
-    Role, RoleResponse
+    User, UserCreate, UserUpdate, UserResponse, UserStats, UserStatus
 )
-from logic.auth.service import UserService, RoleService, AuditService
+from logic.auth.service import UserService, AuditService
 from logic.auth.security import (
     require_user_management, require_user_view, get_current_active_user,
     audit_log, rate_limit, oauth2_scheme
@@ -22,42 +21,10 @@ router = APIRouter(prefix="/admin", tags=["admin-users"])
 def build_user_response(user: User) -> UserResponse:
     """Build user response with roles and permissions - FAST VERSION"""
     with Session(engine) as session:
-        # Single optimized query to get user roles and permissions
-        from models.user import UserRole, Role, RolePermission, Permission
-        
-        # Get user role with permissions in a single query
-        role_query = (
-            select(Role, Permission)
-            .join(UserRole, Role.id == UserRole.role_id)
-            .outerjoin(RolePermission, Role.id == RolePermission.role_id)
-            .outerjoin(Permission, RolePermission.permission_id == Permission.id)
-            .where(UserRole.user_id == user.id)
-        )
-        
-        results = session.exec(role_query).all()
+        # Simplified version without roles and permissions
         
         role_response = None
         permission_names = []
-        
-        if results:
-            # Group results by role (assuming single role per user)
-            role_data = results[0][0] if results[0][0] else None  # First role
-            
-            if role_data:
-                # Collect unique permission names
-                unique_permissions = set()
-                for role, perm in results:
-                    if perm and perm.name:  # Check if permission exists
-                        unique_permissions.add(perm.name)
-                
-                permission_names = list(unique_permissions)
-                
-                role_response = RoleResponse(
-                    id=role_data.id,
-                    name=role_data.name,
-                    description=role_data.description or "",
-                    permissions=permission_names
-                )
     
     return UserResponse(
         id=user.id,
@@ -108,9 +75,7 @@ async def get_users(
         if department:
             query = query.where(User.department == department)
         
-        if role_id:
-            from models.user import UserRole
-            query = query.join(UserRole).where(UserRole.role_id == role_id)
+        # Skip role filtering since roles are removed
         
         # Get total count
         total_query = select(func.count()).select_from(query.subquery())
@@ -128,66 +93,25 @@ async def get_users(
         # Batch fetch all user roles and permissions to reduce queries
         user_ids = [user.id for user in users]
         
-        if user_ids:
-            from models.user import UserRole, Role, RolePermission, Permission
-            
-            # Single query to get all roles and permissions for all users
-            roles_perms_query = (
-                select(UserRole.user_id, Role, Permission)
-                .join(Role, UserRole.role_id == Role.id)
-                .outerjoin(RolePermission, Role.id == RolePermission.role_id)
-                .outerjoin(Permission, RolePermission.permission_id == Permission.id)
-                .where(UserRole.user_id.in_(user_ids))
-            )
-            
-            batch_results = session.exec(roles_perms_query).all()
-            
-            # Group results by user_id
-            user_roles_perms = {}
-            for user_id, role, perm in batch_results:
-                if user_id not in user_roles_perms:
-                    user_roles_perms[user_id] = {"role": role, "permissions": set()}
-                if perm:
-                    user_roles_perms[user_id]["permissions"].add(perm.name)
-            
-            # Build responses using cached data
-            for user in users:
-                role_data = user_roles_perms.get(user.id)
-                role_response = None
-                permission_names = []
-                
-                if role_data:
-                    role = role_data["role"]
-                    permission_names = list(role_data["permissions"])
-                    
-                    if role:
-                        role_response = RoleResponse(
-                            id=role.id,
-                            name=role.name,
-                            description=role.description or "",
-                            permissions=permission_names
-                        )
-                
-                user_responses.append(UserResponse(
-                    id=user.id,
-                    username=user.username,
-                    email=user.email or "",
-                    full_name=user.full_name or user.username,
-                    phone=user.phone,
-                    avatar=user.avatar,
-                    status=user.status or "active",
-                    department=user.department,
-                    role=role_response,
-                    permissions=permission_names,
-                    two_factor_enabled=user.two_factor_enabled or False,
-                    email_verified=user.email_verified or False,
-                    last_login_at=user.last_login_at,
-                    created_at=user.created_at or datetime.utcnow(),
-                    updated_at=user.updated_at or datetime.utcnow()
-                ))
-        else:
-            # No users found
-            user_responses = []
+        # Build simplified responses without roles/permissions
+        for user in users:
+            user_responses.append(UserResponse(
+                id=user.id,
+                username=user.username,
+                email=user.email or "",
+                full_name=user.full_name or user.username,
+                phone=user.phone,
+                avatar=user.avatar,
+                status=user.status or "active",
+                department=user.department,
+                role=None,
+                permissions=[],
+                two_factor_enabled=user.two_factor_enabled or False,
+                email_verified=user.email_verified or False,
+                last_login_at=user.last_login_at,
+                created_at=user.created_at or datetime.utcnow(),
+                updated_at=user.updated_at or datetime.utcnow()
+            ))
         
         return {
             "users": user_responses,
@@ -211,8 +135,8 @@ async def get_user_stats(
         suspended_users = session.exec(select(func.count(User.id)).where(User.status == UserStatus.SUSPENDED)).one()
         pending_users = session.exec(select(func.count(User.id)).where(User.status == UserStatus.PENDING)).one()
         
-        # Count roles
-        total_roles = session.exec(select(func.count(Role.id))).one()
+        # Count roles (set to 0 since roles are removed)
+        total_roles = 0
         
         # Count recent logins (last 24 hours)
         recent_cutoff = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -291,21 +215,7 @@ async def update_user(
         user.updated_at = datetime.utcnow()
         session.add(user)
         
-        # Update role if provided - fast version
-        if user_data.role_id:
-            # Remove existing roles
-            from models.user import UserRole
-            existing_roles = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
-            for role in existing_roles:
-                session.delete(role)
-            
-            # Add new role
-            user_role = UserRole(
-                user_id=user_id,
-                role_id=user_data.role_id,
-                assigned_by=current_user.id
-            )
-            session.add(user_role)
+        # Skip role assignment since roles are removed
         
         session.commit()
         session.refresh(user)
@@ -806,12 +716,23 @@ async def terminate_single_session(
         # Get user info for logging
         user = session.get(User, user_session.user_id)
         
-        # Use TokenStatusService to revoke all user tokens  
-        # This affects all user tokens for complete logout
-        sessions_terminated = TokenStatusService.revoke_all_user_tokens(
-            user_id=user_session.user_id,
-            reason="admin_session_termination"
-        )
+        # Store session info for return message
+        has_token_jti = bool(user_session.token_jti)
+        
+        # Revoke only the specific session token
+        if user_session.token_jti:
+            success = TokenStatusService.revoke_token(
+                jti=user_session.token_jti,
+                reason="admin_session_termination"
+            )
+            sessions_terminated = 1 if success else 0
+        else:
+            # If no token_jti, mark the session as inactive directly
+            user_session.is_active = False
+            user_session.token_status = "revoked"
+            session.add(user_session)
+            session.commit()
+            sessions_terminated = 1
         
         # Log session termination
         AuditService.log_business_event(
@@ -837,7 +758,7 @@ async def terminate_single_session(
     return {
         "message": "Session terminated successfully", 
         "sessions_affected": sessions_terminated,
-        "note": "All user tokens invalidated via blacklist"
+        "note": "Single session token revoked" if has_token_jti else "Session marked inactive"
     }
 
 @router.post("/sessions/revoke-current-token") 

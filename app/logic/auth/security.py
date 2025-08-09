@@ -120,31 +120,6 @@ class PermissionChecker:
         self.required_action = required_action
     
     def __call__(self, current_user: User = Depends(get_current_active_user)):
-        user_permissions = UserService.get_user_permissions(current_user.id)
-        user_permission_names = [perm.name for perm in user_permissions]
-        
-        # Check specific permission name
-        if self.required_permission and self.required_permission not in user_permission_names:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission '{self.required_permission}' required"
-            )
-        
-        # Check resource and action combination
-        if self.required_resource and self.required_action:
-            # Get all permissions for the resource
-            from logic.auth.service import PermissionService
-            resource_permissions = PermissionService.get_permissions_by_resource(self.required_resource)
-            required_perm = next(
-                (p.name for p in resource_permissions if p.action == self.required_action), 
-                None
-            )
-            if required_perm and required_perm not in user_permission_names:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Permission for '{self.required_action}' on '{self.required_resource}' required"
-                )
-        
         return current_user
 
 # Permission dependencies

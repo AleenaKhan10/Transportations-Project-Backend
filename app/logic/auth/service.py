@@ -6,8 +6,8 @@ import secrets
 import uuid
 
 from models.user import (
-    User, UserCreate, UserUpdate, Role, Permission, UserRole, RolePermission,
-    UserSession, AuditLog, UserStatus, AuditStatus, UserResponse, RoleResponse
+    User, UserCreate, UserUpdate,
+    UserSession, AuditLog, UserStatus, AuditStatus
 )
 from db.database import engine
 
@@ -148,46 +148,13 @@ class UserService:
             return True
     
     @staticmethod
-    def get_user_permissions(user_id: int) -> List[Permission]:
-        with Session(engine) as session:
-            # Get user roles and their permissions
-            query = (
-                select(Permission)
-                .join(RolePermission, Permission.id == RolePermission.permission_id)
-                .join(Role, RolePermission.role_id == Role.id)
-                .join(UserRole, Role.id == UserRole.role_id)
-                .where(UserRole.user_id == user_id)
-                .distinct()
-            )
-            permissions = session.exec(query).all()
-            return list(permissions)
+    def get_user_permissions(user_id: int) -> List:
+        return []
     
     @staticmethod
-    def get_user_roles(user_id: int) -> List[Role]:
-        with Session(engine) as session:
-            query = (
-                select(Role)
-                .join(UserRole, Role.id == UserRole.role_id)
-                .where(UserRole.user_id == user_id)
-            )
-            return list(session.exec(query).all())
+    def get_user_roles(user_id: int) -> List:
+        return []
     
-    @staticmethod
-    def assign_role_to_user(user_id: int, role_id: int, assigned_by: Optional[int] = None):
-        with Session(engine) as session:
-            # Remove existing roles
-            existing_roles = session.exec(select(UserRole).where(UserRole.user_id == user_id)).all()
-            for role in existing_roles:
-                session.delete(role)
-            
-            # Assign new role
-            user_role = UserRole(
-                user_id=user_id,
-                role_id=role_id,
-                assigned_by=assigned_by
-            )
-            session.add(user_role)
-            session.commit()
     
     @staticmethod
     def update_last_login(user_id: int):
@@ -198,37 +165,6 @@ class UserService:
                 session.add(user)
                 session.commit()
 
-class RoleService:
-    @staticmethod
-    def get_all_roles() -> List[Role]:
-        with Session(engine) as session:
-            return list(session.exec(select(Role)).all())
-    
-    @staticmethod
-    def get_role_by_id(role_id: int) -> Optional[Role]:
-        with Session(engine) as session:
-            return session.get(Role, role_id)
-    
-    @staticmethod
-    def get_role_permissions(role_id: int) -> List[Permission]:
-        with Session(engine) as session:
-            query = (
-                select(Permission)
-                .join(RolePermission, Permission.id == RolePermission.permission_id)
-                .where(RolePermission.role_id == role_id)
-            )
-            return list(session.exec(query).all())
-
-class PermissionService:
-    @staticmethod
-    def get_all_permissions() -> List[Permission]:
-        with Session(engine) as session:
-            return list(session.exec(select(Permission)).all())
-    
-    @staticmethod
-    def get_permissions_by_resource(resource: str) -> List[Permission]:
-        with Session(engine) as session:
-            return list(session.exec(select(Permission).where(Permission.resource == resource)).all())
 
 class SessionService:
     @staticmethod

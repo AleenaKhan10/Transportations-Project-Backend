@@ -70,44 +70,6 @@ class User(SQLModel, table=True):
     password: Optional[str] = Field(max_length=255, default=None)  # Password hash
     is_active: bool = Field(default=True)
 
-class Role(SQLModel, table=True):
-    __tablename__ = "roles"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=100, unique=True, index=True)
-    slug: str = Field(max_length=100, unique=True, index=True)
-    description: Optional[str] = None
-    level: Optional[int] = Field(default=1)
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-
-class Permission(SQLModel, table=True):
-    __tablename__ = "permissions"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=100)
-    slug: str = Field(max_length=100, unique=True, index=True)
-    resource: str = Field(max_length=50, index=True)
-    action: str = Field(max_length=50)
-    description: Optional[str] = None
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-
-class UserRole(SQLModel, table=True):
-    __tablename__ = "user_roles"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int
-    role_id: int
-    assigned_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    assigned_by: Optional[int] = Field(default=None)
-
-class RolePermission(SQLModel, table=True):
-    __tablename__ = "role_permissions"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    role_id: int
-    permission_id: int
-    granted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 class UserSession(SQLModel, table=True):
     __tablename__ = "user_sessions"
