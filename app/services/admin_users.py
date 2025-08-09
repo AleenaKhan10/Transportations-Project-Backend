@@ -742,10 +742,10 @@ async def force_logout_user(
     user_id: int,
     current_user: User = Depends(require_user_management)
 ):
-    """Force logout user (terminate all sessions) with token blacklisting"""
+    """Force logout user (terminate all sessions) with token revocation"""
     with Session(engine) as session:
         from models.user import UserSession
-        from logic.auth.service import AuditService, TokenBlacklistService
+        from logic.auth.service import AuditService, TokenStatusService
         
         # Get user info for logging
         user = session.get(User, user_id)
@@ -755,11 +755,10 @@ async def force_logout_user(
                 detail="User not found"
             )
         
-        # Use TokenBlacklistService to blacklist all user tokens
-        sessions_terminated = TokenBlacklistService.blacklist_all_user_tokens(
+        # Use TokenStatusService to revoke all user tokens
+        sessions_terminated = TokenStatusService.revoke_all_user_tokens(
             user_id=user_id,
-            reason="admin_force_logout",
-            blacklisted_by=current_user.id
+            reason="admin_force_logout"
         )
         
         # Log session termination - this IS a business event
@@ -791,10 +790,10 @@ async def terminate_single_session(
     session_id: str,
     current_user: User = Depends(require_user_management)
 ):
-    """Terminate a single session by session ID with token blacklisting"""
+    """Terminate a single session by session ID with token revocation"""
     with Session(engine) as session:
         from models.user import UserSession
-        from logic.auth.service import AuditService, TokenBlacklistService
+        from logic.auth.service import AuditService, TokenStatusService
         
         # Find the session
         user_session = session.get(UserSession, session_id)
@@ -807,12 +806,11 @@ async def terminate_single_session(
         # Get user info for logging
         user = session.get(User, user_session.user_id)
         
-        # Use TokenBlacklistService to blacklist all user tokens
-        # Since we don't have JWT ID per session yet, this affects all user tokens
-        sessions_terminated = TokenBlacklistService.blacklist_all_user_tokens(
+        # Use TokenStatusService to revoke all user tokens  
+        # This affects all user tokens for complete logout
+        sessions_terminated = TokenStatusService.revoke_all_user_tokens(
             user_id=user_session.user_id,
-            reason="admin_session_termination",
-            blacklisted_by=current_user.id
+            reason="admin_session_termination"
         )
         
         # Log session termination
@@ -842,17 +840,15 @@ async def terminate_single_session(
         "note": "All user tokens invalidated via blacklist"
     }
 
-@router.post("/sessions/blacklist-current-token")
-async def blacklist_current_token(
+@router.post("/sessions/revoke-current-token") 
+async def revoke_current_token(
     request: Request,
     token: str = Depends(oauth2_scheme),
     current_user: User = Depends(require_user_management)
 ):
-    """Blacklist the current token being used (for testing)"""
+    """Revoke the current token being used (for testing)"""
     from logic.auth.security import get_jwt_id_from_token
-    from logic.auth.service import TokenBlacklistService, AuditService
-    from jose import jwt
-    from config import settings
+    from logic.auth.service import TokenStatusService, AuditService
     
     jti = get_jwt_id_from_token(token)
     
@@ -862,31 +858,24 @@ async def blacklist_current_token(
             detail="Token does not have JWT ID"
         )
     
-    # Get token expiration  
-    payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-    exp_timestamp = payload.get("exp", 0)
-    expires_at = datetime.utcfromtimestamp(exp_timestamp)  # Use UTC timestamp
+    # Revoke the token
+    success = TokenStatusService.revoke_token(jti, reason="admin_test")
     
-    # Blacklist the token
-    TokenBlacklistService.blacklist_token(
-        jti=jti,
-        user_id=current_user.id,
-        expires_at=expires_at,
-        reason="admin_blacklist_test",
-        blacklisted_by=current_user.id
-    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Token session not found"
+        )
     
-    
-    # Log the blacklisting
+    # Log the revocation
     AuditService.log_business_event(
         user_id=current_user.id,
-        action="token_blacklisted",
+        action="token_revoked",
         resource="tokens",
         resource_id=jti,
         new_values={
-            "blacklisted_by": current_user.username,
-            "reason": "admin_blacklist_test",
-            "expires_at": expires_at.isoformat()
+            "revoked_by": current_user.username,
+            "reason": "admin_test"
         },
         ip_address=request.client.host,
         user_agent=request.headers.get("User-Agent"),
@@ -894,56 +883,12 @@ async def blacklist_current_token(
     )
     
     return {
-        "message": "Token blacklisted successfully",
+        "message": "Token revoked successfully",
         "jti": jti,
         "note": "This token should no longer work for authentication"
     }
 
-@router.post("/users/{user_id}/restore-access")
-async def restore_user_access(
-    request: Request,
-    user_id: int,
-    current_user: User = Depends(require_user_management)
-):
-    """Restore user access by removing them from blacklist"""
-    with Session(engine) as session:
-        from logic.auth.service import AuditService, TokenBlacklistService
-        
-        # Get user info for logging
-        user = session.get(User, user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # Remove user from blacklist
-        removed_count = TokenBlacklistService.remove_user_blacklist(
-            user_id=user_id,
-            removed_by=current_user.id
-        )
-        
-        # Log access restoration
-        AuditService.log_business_event(
-            user_id=current_user.id,
-            action="user_access_restored",
-            resource="users",
-            resource_id=str(user_id),
-            old_values={"username": user.username, "access_blocked": True},
-            new_values={
-                "restored_by": current_user.username,
-                "restoration_date": datetime.utcnow().isoformat(),
-                "blacklist_entries_removed": removed_count
-            },
-            ip_address=request.client.host,
-            user_agent=request.headers.get("User-Agent"),
-            status="success"
-        )
-    
-    return {
-        "message": "User access restored successfully",
-        "blacklist_entries_removed": removed_count
-    }
+
 
 
 @router.post("/sessions/cleanup-expired")
@@ -952,9 +897,9 @@ async def cleanup_expired_sessions(
     current_user: User = Depends(require_user_management)
 ):
     """Cleanup expired sessions (admin endpoint)"""
-    from logic.auth.service import SessionService, AuditService
+    from logic.auth.service import TokenStatusService, AuditService
     
-    cleanup_count = SessionService.cleanup_expired_sessions()
+    cleanup_count = TokenStatusService.cleanup_expired_sessions()
     
     # Log session cleanup - this IS a business event
     AuditService.log_business_event(

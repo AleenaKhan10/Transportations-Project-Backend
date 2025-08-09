@@ -120,28 +120,9 @@ class UserSession(SQLModel, table=True):
     expires_at: datetime = Field(index=True)
     is_active: bool = Field(default=True, index=True)
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    # jwt_id: Optional[str] = Field(max_length=255, default=None)  # TODO: Add to DB schema later
+    token_status: str = Field(default="active", max_length=20, index=True)  # 'active', 'revoked', 'expired'
+    token_jti: Optional[str] = Field(max_length=255, default=None, index=True)  # JWT ID for tracking
 
-class TokenBlacklist(SQLModel, table=True):
-    __tablename__ = "token_blacklist"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    jti: str = Field(max_length=255, unique=True, index=True)  # JWT ID
-    user_id: Optional[int] = Field(default=None, index=True)
-    blacklisted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    expires_at: datetime = Field(index=True)  # When token would naturally expire
-    reason: Optional[str] = Field(max_length=255, default=None)
-    blacklisted_by: Optional[int] = Field(default=None)  # Admin who blacklisted it
-
-class UserBlacklist(SQLModel, table=True):
-    __tablename__ = "user_blacklist"
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(index=True)  # User whose tokens are blacklisted
-    blacklisted_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    blacklisted_until: Optional[datetime] = None  # If None, blacklist all future tokens until manually removed
-    reason: Optional[str] = Field(max_length=255, default=None)
-    blacklisted_by: Optional[int] = Field(default=None)  # Admin who blacklisted the user
 
 class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_logs"
