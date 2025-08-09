@@ -7,8 +7,7 @@ import uuid
 
 from models.user import (
     User, UserCreate, UserUpdate, Role, Permission, UserRole, RolePermission,
-    UserSession, AuditLog, UserStatus, AuditStatus, UserResponse, RoleResponse,
-    TokenBlacklist, UserBlacklist
+    UserSession, AuditLog, UserStatus, AuditStatus, UserResponse, RoleResponse
 )
 from db.database import engine
 
@@ -314,124 +313,81 @@ class SessionService:
                 .where(UserSession.expires_at > datetime.utcnow())
             ).one()
 
-class TokenBlacklistService:
+class TokenStatusService:
     @staticmethod
-    def blacklist_token(jti: str, user_id: int, expires_at: datetime, reason: str = "session_terminated", blacklisted_by: Optional[int] = None):
-        """Add a token to the blacklist"""
+    def revoke_token(jti: str, reason: str = "admin_revoked"):
+        """Revoke a specific token by JWT ID"""
         with Session(engine) as session:
-            # Check if token is already blacklisted
-            existing = session.exec(
-                select(TokenBlacklist).where(TokenBlacklist.jti == jti)
+            session_updated = session.exec(
+                select(UserSession).where(UserSession.token_jti == jti)
             ).first()
             
-            if existing:
-                return existing  # Already blacklisted
-            
-            blacklist_entry = TokenBlacklist(
-                jti=jti,
-                user_id=user_id,
-                expires_at=expires_at,
-                reason=reason,
-                blacklisted_by=blacklisted_by
-            )
-            
-            session.add(blacklist_entry)
-            session.commit()
-            return blacklist_entry
-    
-    @staticmethod
-    def is_token_blacklisted(jti: str) -> bool:
-        """Check if a token is blacklisted"""
-        with Session(engine) as session:
-            # Check individual token blacklist
-            token_blacklisted = session.exec(
-                select(TokenBlacklist)
-                .where(TokenBlacklist.jti == jti)
-                .where(TokenBlacklist.expires_at > datetime.utcnow())  # Only check non-expired blacklist entries
-            ).first()
-            
-            if token_blacklisted:
+            if session_updated:
+                session_updated.token_status = "revoked"
+                session_updated.is_active = False
+                session.add(session_updated)
+                session.commit()
                 return True
-            
             return False
     
-    @staticmethod 
-    def is_user_token_blacklisted(user_id: int, token_issued_at: datetime) -> bool:
-        """Check if user's tokens are blacklisted (for force logout)"""
+    @staticmethod
+    def get_token_status(jti: str) -> str:
+        """Get current token status ('active', 'revoked', 'expired', or 'not_found')"""
         with Session(engine) as session:
-            user_blacklist = session.exec(
-                select(UserBlacklist)
-                .where(UserBlacklist.user_id == user_id)
-                .where(UserBlacklist.blacklisted_at > token_issued_at)  # Blacklist created after token was issued
-                .where(
-                    (UserBlacklist.blacklisted_until.is_(None)) |  # Permanent blacklist
-                    (UserBlacklist.blacklisted_until > datetime.utcnow())  # Temporary blacklist still active
-                )
+            user_session = session.exec(
+                select(UserSession).where(UserSession.token_jti == jti)
             ).first()
             
-            return user_blacklist is not None
+            if not user_session:
+                return "not_found"
+            
+            # Check if token is expired
+            if user_session.expires_at < datetime.utcnow():
+                # Auto-mark as expired if not already
+                if user_session.token_status == "active":
+                    user_session.token_status = "expired"
+                    session.add(user_session)
+                    session.commit()
+                return "expired"
+            
+            return user_session.token_status
     
     @staticmethod
-    def blacklist_all_user_tokens(user_id: int, reason: str = "force_logout", blacklisted_by: Optional[int] = None):
-        """Blacklist all active sessions/tokens for a user"""
+    def revoke_all_user_tokens(user_id: int, reason: str = "force_logout"):
+        """Revoke all active tokens for a user (force logout)"""
         with Session(engine) as session:
-            # Create user blacklist entry to invalidate all current and future tokens
-            user_blacklist = UserBlacklist(
-                user_id=user_id,
-                reason=reason,
-                blacklisted_by=blacklisted_by
-            )
-            session.add(user_blacklist)
-            
-            # Also mark sessions as inactive for tracking purposes
             active_sessions = session.exec(
                 select(UserSession)
                 .where(UserSession.user_id == user_id)
-                .where(UserSession.is_active == True)
+                .where(UserSession.token_status == "active")
             ).all()
             
-            blacklisted_count = len(active_sessions)
+            revoked_count = len(active_sessions)
             for user_session in active_sessions:
+                user_session.token_status = "revoked"
                 user_session.is_active = False
                 session.add(user_session)
             
             session.commit()
-            return blacklisted_count
+            return revoked_count
     
     @staticmethod
-    def remove_user_blacklist(user_id: int, removed_by: Optional[int] = None):
-        """Remove user from blacklist (allow them to login again)"""
+    def cleanup_expired_sessions():
+        """Mark expired sessions"""
         with Session(engine) as session:
-            user_blacklists = session.exec(
-                select(UserBlacklist)
-                .where(UserBlacklist.user_id == user_id)
-                .where(
-                    (UserBlacklist.blacklisted_until.is_(None)) |
-                    (UserBlacklist.blacklisted_until > datetime.utcnow())
-                )
+            expired_sessions = session.exec(
+                select(UserSession)
+                .where(UserSession.expires_at < datetime.utcnow())
+                .where(UserSession.token_status == "active")
             ).all()
             
-            removed_count = len(user_blacklists)
-            for blacklist_entry in user_blacklists:
-                session.delete(blacklist_entry)
+            for session_obj in expired_sessions:
+                session_obj.token_status = "expired"
+                session_obj.is_active = False
+                session.add(session_obj)
             
             session.commit()
-            return removed_count
-    
-    @staticmethod
-    def cleanup_expired_blacklist():
-        """Remove expired entries from token blacklist"""
-        with Session(engine) as session:
-            expired_entries = session.exec(
-                select(TokenBlacklist)
-                .where(TokenBlacklist.expires_at < datetime.utcnow())
-            ).all()
-            
-            for entry in expired_entries:
-                session.delete(entry)
-            
-            session.commit()
-            return len(expired_entries)
+            return len(expired_sessions)
 
 class AuditService:
     @staticmethod

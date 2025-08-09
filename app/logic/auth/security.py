@@ -75,17 +75,29 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         if username is None:
             raise credentials_exception
         
-        # Check if token is blacklisted (CRITICAL for session termination)
+        # Check token status (SIMPLE and RELIABLE)
         if jti:
-            from logic.auth.service import TokenBlacklistService
-            # Check individual token blacklist
-            if TokenBlacklistService.is_token_blacklisted(jti):
+            from logic.auth.service import TokenStatusService
+            token_status = TokenStatusService.get_token_status(jti)
+            
+            if token_status == "revoked":
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Token has been revoked",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-            
+            elif token_status == "expired":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            elif token_status == "not_found":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
         
     except JWTError:
         raise credentials_exception
@@ -93,16 +105,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     user = UserService.get_user_by_username(username)
     if user is None or user.status != UserStatus.ACTIVE:
         raise credentials_exception
-    
-    # Check user-level token blacklist (for force logout) after user is found
-    if jti:
-        token_issued_at = datetime.utcfromtimestamp(payload.get("iat", 0))
-        if TokenBlacklistService.is_user_token_blacklisted(user.id, token_issued_at):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User session has been terminated by administrator",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
     
     return user
 

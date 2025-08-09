@@ -132,7 +132,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     )
     refresh_token, refresh_jwt_id = create_refresh_token(data={"sub": user.username})
     
-    # Create session record automatically
+    # Create session record with JWT ID and active status
     from models.user import UserSession
     from sqlmodel import Session as DBSession
     from db.database import engine
@@ -145,7 +145,7 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     elif "x-real-ip" in request.headers:
         client_ip = request.headers["x-real-ip"]
     
-    # Create session record (without jwt_id field since it doesn't exist in DB yet)
+    # Create session record with token tracking
     with DBSession(engine) as db_session:
         user_session = UserSession(
             id=str(uuid.uuid4()),  # Unique session ID
@@ -155,8 +155,9 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             created_at=datetime.utcnow(),
             last_activity=datetime.utcnow(),
             expires_at=datetime.utcnow() + timedelta(hours=24),  # 24 hour session
-            is_active=True
-            # jwt_id field not included since it doesn't exist in current DB schema
+            is_active=True,
+            token_status="active",  # Token starts as active
+            token_jti=jwt_id  # Save JWT ID for tracking
         )
         db_session.add(user_session)
         db_session.commit()
@@ -418,3 +419,34 @@ async def reset_password(request: Request, token: str, new_password: str):
 async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
     """Get current user information"""
     return build_user_response(current_user)
+
+@router.get("/token-status")
+async def check_token_status(
+    token: str = Depends(oauth2_scheme)
+):
+    """Check current token status - FOR FRONTEND PERIODIC VALIDATION"""
+    from logic.auth.security import get_jwt_id_from_token
+    from logic.auth.service import TokenStatusService
+    
+    jti = get_jwt_id_from_token(token)
+    
+    if not jti:
+        return {
+            "status": "invalid",
+            "message": "Token does not have JWT ID"
+        }
+    
+    token_status = TokenStatusService.get_token_status(jti)
+    
+    status_messages = {
+        "active": "Token is valid and active",
+        "revoked": "Token has been revoked by administrator", 
+        "expired": "Token has expired",
+        "not_found": "Token session not found"
+    }
+    
+    return {
+        "status": token_status,
+        "jti": jti,
+        "message": status_messages.get(token_status, "Unknown status")
+    }
