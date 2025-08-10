@@ -9,6 +9,7 @@ class UserStatus(str, Enum):
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
     PENDING = "pending"
+    EMAIL_VERIFICATION_PENDING = "email_verification_pending"
 
 class AuditStatus(str, Enum):
     SUCCESS = "success"
@@ -88,6 +89,19 @@ class UserSession(SQLModel, table=True):
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     token_status: str = Field(default="active", max_length=20, index=True)  # 'active', 'revoked', 'expired'
     token_jti: Optional[str] = Field(max_length=255, default=None, index=True)  # JWT ID for tracking
+
+
+class PendingEmailVerification(SQLModel, table=True):
+    __tablename__ = "pending_email_verifications"
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(max_length=255, index=True)
+    email: str = Field(max_length=255, index=True)
+    password_hash: str = Field(max_length=255)
+    full_name: str = Field(max_length=255)
+    otp_code: str = Field(max_length=6, index=True)  # 6-digit OTP
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    expires_at: datetime = Field(index=True)  # OTP expires after 10 minutes
 
 
 class AuditLog(SQLModel, table=True):

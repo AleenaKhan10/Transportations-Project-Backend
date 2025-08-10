@@ -242,6 +242,7 @@ async def approve_user(
         
         old_status = user.status
         user.status = "active"
+        user.is_active = True  # Enable login
         user.updated_at = datetime.utcnow()
         session.add(user)
         session.commit()
@@ -267,4 +268,49 @@ async def approve_user(
             "success": True,
             "message": "User approved successfully",
             "status": "active"
+        }
+
+@router.delete("/{user_id}")
+async def delete_user(
+    request: Request,
+    user_id: int,
+    current_user: User = Depends(get_current_active_user)
+):
+    """Delete a user completely"""
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Store user info for audit before deletion
+        user_info = {
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "status": user.status
+        }
+        
+        # Delete the user
+        session.delete(user)
+        session.commit()
+        
+        # Log the deletion
+        AuditService.log_business_event(
+            user_id=current_user.id,
+            action="user_deleted",
+            resource="users",
+            resource_id=str(user_id),
+            old_values=user_info,
+            new_values={"deleted_by": current_user.username},
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+            status="success"
+        )
+        
+        return {
+            "success": True,
+            "message": f"User {user_info['username']} deleted successfully"
         }
