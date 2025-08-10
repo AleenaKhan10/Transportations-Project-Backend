@@ -35,7 +35,9 @@ class UserService:
                 email=getattr(user_data, 'email', None),
                 full_name=getattr(user_data, 'full_name', user_data.username),
                 status=status or "active",  # Use provided status or default to active
-                is_active=True
+                is_active=True,
+                role="user",  # Default role
+                allowed_pages=["dashboard"]  # Default allowed pages for new users
             )
             
             session.add(user)

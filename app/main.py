@@ -8,6 +8,7 @@ from services import (
     drivers_router,
     webhook_router,
 )
+from services.users import router as users_router
 from services.vapi import router as vapi_router, router_no_auth as vapi_router_no_auth
 from services.reports import router as reports_router
 from services.pcmiler import router as pcmiler_router
@@ -41,6 +42,7 @@ app.add_event_handler("startup", create_db_and_tables)
 
 # Include existing routers
 app.include_router(auth_router, tags=["auth"])
+app.include_router(users_router, tags=["users"])
 app.include_router(trip_router, tags=["trips"])
 app.include_router(ingest_router, tags=["ingest"])
 app.include_router(alert_router, tags=["alerts"])
