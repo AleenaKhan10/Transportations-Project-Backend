@@ -37,6 +37,7 @@ class UserUpdate(SQLModel):
     avatar: Optional[str] = Field(max_length=500, default=None)
     status: Optional[UserStatus] = None
     department: Optional[str] = Field(max_length=100, default=None)
+    address: Optional[str] = Field(max_length=500, default=None)
     role_id: Optional[int] = None
 
 class UserLogin(SQLModel):
@@ -56,6 +57,9 @@ class User(SQLModel, table=True):
     avatar: Optional[str] = Field(max_length=500, default=None)
     status: Optional[str] = Field(default="active")  # enum('active','inactive','suspended','pending')
     department: Optional[str] = Field(max_length=100, default=None)
+    role: Optional[str] = Field(max_length=50, default="user")  # user, admin, super_admin
+    allowed_pages: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # ["dashboard", "drivers", etc]
+    address: Optional[str] = Field(max_length=500, default=None)
     two_factor_enabled: Optional[bool] = Field(default=False)
     two_factor_secret: Optional[str] = Field(max_length=100, default=None)
     email_verified: Optional[bool] = Field(default=False)

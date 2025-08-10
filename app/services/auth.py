@@ -23,8 +23,9 @@ def build_user_response(user: User) -> dict:
         "username": user.username,
         "email": getattr(user, 'email', None) or user.username,
         "fullName": getattr(user, 'full_name', None) or "Admin User",
-        "role": None,
-        "permissions": [],
+        "role": getattr(user, 'role', 'user'),
+        "permissions": [],  # Legacy field, kept for backward compatibility
+        "allowed_pages": getattr(user, 'allowed_pages', []) or [],
         "status": getattr(user, 'status', 'active'),
         "is_active": getattr(user, 'is_active', True)
     }
