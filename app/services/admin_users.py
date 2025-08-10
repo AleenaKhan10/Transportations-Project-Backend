@@ -411,6 +411,7 @@ async def approve_user(
         
         # Direct update - no separate service call
         user.status = "active"
+        user.is_active = True  # Enable login
         user.updated_at = datetime.utcnow()
         session.add(user)
         session.commit()

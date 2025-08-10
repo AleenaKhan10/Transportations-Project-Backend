@@ -7,7 +7,8 @@ import uuid
 
 from models.user import (
     User, UserCreate, UserUpdate,
-    UserSession, AuditLog, UserStatus, AuditStatus
+    UserSession, AuditLog, UserStatus, AuditStatus,
+    PendingEmailVerification
 )
 from db.database import engine
 
@@ -41,6 +42,112 @@ class UserService:
             )
             
             session.add(user)
+            session.commit()
+            session.refresh(user)
+            
+            return user
+    
+    @staticmethod
+    def create_pending_verification(user_data: UserCreate) -> PendingEmailVerification:
+        """Store user data temporarily until OTP is verified"""
+        import random
+        with Session(engine) as session:
+            # Generate 6-digit OTP
+            otp_code = f"{random.randint(100000, 999999):06d}"
+            
+            # Check if email already has pending verification
+            existing = session.exec(
+                select(PendingEmailVerification).where(
+                    PendingEmailVerification.email == user_data.email
+                )
+            ).first()
+            
+            if existing:
+                # Update existing pending verification with new OTP
+                existing.username = user_data.username
+                existing.password_hash = UserService.hash_password(user_data.password)
+                existing.full_name = getattr(user_data, 'full_name', user_data.username)
+                existing.otp_code = otp_code
+                existing.created_at = datetime.utcnow()
+                existing.expires_at = datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                pending_verification = existing
+            else:
+                # Create new pending verification
+                pending_verification = PendingEmailVerification(
+                    username=user_data.username,
+                    email=user_data.email,
+                    password_hash=UserService.hash_password(user_data.password),
+                    full_name=getattr(user_data, 'full_name', user_data.username),
+                    otp_code=otp_code,
+                    expires_at=datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
+                )
+                
+                session.add(pending_verification)
+                session.commit()
+                session.refresh(pending_verification)
+            
+            # Send real OTP email
+            from services.email_service import EmailService
+            email_sent = EmailService.send_otp_email(
+                to_email=pending_verification.email,
+                otp_code=otp_code,
+                full_name=pending_verification.full_name
+            )
+            
+            return pending_verification
+    
+    @staticmethod
+    def verify_otp_and_create_user(email: str, otp_code: str) -> Optional[User]:
+        """Verify OTP code and create the actual user"""
+        with Session(engine) as session:
+            # Find pending verification with matching email and OTP
+            pending_verification = session.exec(
+                select(PendingEmailVerification).where(
+                    PendingEmailVerification.email == email,
+                    PendingEmailVerification.otp_code == otp_code,
+                    PendingEmailVerification.expires_at > datetime.utcnow()
+                )
+            ).first()
+            
+            if not pending_verification:
+                return None
+            
+            # Check if user already exists (shouldn't happen but safety check)
+            existing_user = session.exec(
+                select(User).where(
+                    (User.username == pending_verification.username) | 
+                    (User.email == pending_verification.email)
+                )
+            ).first()
+            
+            if existing_user:
+                # User already exists, cleanup pending verification
+                session.delete(pending_verification)
+                session.commit()
+                return None
+            
+            # Create the actual user now that OTP is verified
+            user = User(
+                username=pending_verification.username,
+                email=pending_verification.email,
+                password=pending_verification.password_hash,
+                full_name=pending_verification.full_name,
+                status="pending",  # Pending admin approval
+                is_active=False,  # Not active until approved
+                role="user",  # Default role
+                allowed_pages=[],  # No pages until approved
+                email_verified=True,  # Email is now verified
+                email_verification_token=None
+            )
+            
+            session.add(user)
+            
+            # Remove the pending verification record
+            session.delete(pending_verification)
+            
             session.commit()
             session.refresh(user)
             

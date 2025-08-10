@@ -41,7 +41,9 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
         # Determine failure reason
         failure_reason = "Invalid credentials"
         if user_check:
-            if user_check.status == "pending":
+            if user_check.status == "email_verification_pending":
+                failure_reason = "Please verify your email first"
+            elif user_check.status == "pending":
                 failure_reason = "Account pending approval"
             elif user_check.status == "suspended":
                 failure_reason = "Account suspended or rejected"
@@ -195,7 +197,14 @@ async def create_user(request: Request, user_data: UserCreate, current_user: Use
 
 @router.post("/register")
 async def register_user(request: Request, user_data: UserCreate):
-    """Public user registration endpoint for testing"""
+    """User registration endpoint with domain validation and email verification"""
+    # Validate email domain
+    if not user_data.email or not user_data.email.endswith("@agylogistics.com"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only @agylogistics.com email addresses are allowed"
+        )
+    
     # Check if username already exists
     existing_user = UserService.get_user_by_username(user_data.username)
     if existing_user:
@@ -212,21 +221,21 @@ async def register_user(request: Request, user_data: UserCreate):
             detail="Email already registered"
         )
     
-    # Create user with pending status for approval
-    user = UserService.create_user(user_data, status="pending")
+    # Store registration data temporarily until email is verified
+    pending_verification = UserService.create_pending_verification(user_data)
     
     # Log user registration - this IS a business event
     AuditService.log_business_event(
         user_id=None,
         action="user_created",
         resource="users",
-        resource_id=str(user.id),
+        resource_id=str(pending_verification.id),
         old_values=None,
         new_values={
-            "username": user.username,
-            "email": user.email,
-            "full_name": user.full_name,
-            "status": "pending",
+            "username": pending_verification.username,
+            "email": pending_verification.email,
+            "full_name": pending_verification.full_name,
+            "status": "email_verification_pending",
             "registration_type": "public"
         },
         ip_address=request.client.host,
@@ -234,7 +243,79 @@ async def register_user(request: Request, user_data: UserCreate):
         status="success"
     )
     
-    return build_user_response(user)
+    return {
+        "success": True,
+        "message": "Registration successful! Please check your email for verification code.",
+        "email": pending_verification.email,
+        "status": "otp_pending",
+        "note": "Enter the 6-digit code sent to your email to complete registration"
+    }
+
+@router.post("/verify-otp")
+async def verify_otp(
+    request: Request,
+    verification_data: dict  # expects {"email": "user@agylogistics.com", "otp_code": "123456"}
+):
+    """Verify OTP code and create user account"""
+    email = verification_data.get("email")
+    otp_code = verification_data.get("otp_code")
+    
+    if not email or not otp_code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email and OTP code are required"
+        )
+    
+    # Validate email domain
+    if not email.endswith("@agylogistics.com"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only @agylogistics.com email addresses are allowed"
+        )
+    
+    user = UserService.verify_otp_and_create_user(email, otp_code)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP code"
+        )
+    
+    # Log OTP verification and user creation
+    AuditService.log_business_event(
+        user_id=user.id,
+        action="otp_verified_user_created",
+        resource="users",
+        resource_id=str(user.id),
+        old_values=None,
+        new_values={"status": "pending", "email_verified": True},
+        ip_address=request.client.host,
+        user_agent=request.headers.get("User-Agent"),
+        status="success"
+    )
+    
+    return {
+        "success": True,
+        "message": "Email verified successfully! Your account is now pending admin approval.",
+        "user_id": user.id,
+        "status": "pending"
+    }
+
+@router.get("/debug/verification-token/{user_id}")
+async def get_verification_token(user_id: int):
+    """DEBUG: Get verification token for testing - REMOVE IN PRODUCTION"""
+    user = UserService.get_user_by_id(user_id)
+    if not user or not user.email_verification_token:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found or no verification token"
+        )
+    
+    return {
+        "user_id": user_id,
+        "email": user.email,
+        "verification_token": user.email_verification_token,
+        "verification_link": f"http://localhost:3000/verify-email?token={user.email_verification_token}"
+    }
 
 @router.post("/refresh")
 async def refresh_token(request: Request, refresh_token: str):
@@ -412,3 +493,70 @@ async def check_token_status(
         "jti": jti,
         "message": status_messages.get(token_status, "Unknown status")
     }
+
+@router.post("/debug/check-user")
+async def debug_check_user(request: Request, user_data: dict):
+    """DEBUG: Check user authentication details"""
+    username = user_data.get("username")
+    password = user_data.get("password")
+    
+    if not username or not password:
+        return {"error": "Username and password required"}
+    
+    # Check if user exists
+    user_by_username = UserService.get_user_by_username(username)
+    user_by_email = UserService.get_user_by_email(username)
+    
+    user = user_by_username or user_by_email
+    
+    if not user:
+        return {
+            "found": False,
+            "message": "User not found by username or email"
+        }
+    
+    # Check password
+    password_valid = UserService.verify_password(password, user.password)
+    
+    return {
+        "found": True,
+        "user_id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "status": user.status,
+        "is_active": user.is_active,
+        "password_valid": password_valid,
+        "can_login": user.status == "active" and user.is_active and password_valid
+    }
+
+@router.post("/debug/fix-user-active")
+async def debug_fix_user_active(request: Request, user_data: dict):
+    """DEBUG: Fix is_active field for a user"""
+    user_id = user_data.get("user_id")
+    
+    if not user_id:
+        return {"error": "user_id required"}
+    
+    from sqlmodel import Session
+    from db.database import engine
+    from datetime import datetime
+    
+    with Session(engine) as session:
+        user = session.get(User, user_id)
+        if not user:
+            return {"error": "User not found"}
+        
+        old_is_active = user.is_active
+        user.is_active = True
+        user.updated_at = datetime.utcnow()
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "old_is_active": old_is_active,
+            "new_is_active": user.is_active,
+            "message": "Fixed is_active field"
+        }
