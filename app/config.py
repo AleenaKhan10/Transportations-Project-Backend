@@ -48,6 +48,12 @@ class Settings(BaseSettings):
 
     # VAPI Phone Number ID (required for campaigns)
     VAPI_PHONENUMBER_ID: str = ""
+    
+    # Email settings
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SENDER_EMAIL: str = "aleenakhanraees40@gmail.com"
+    SENDER_PASSWORD: str = ""
 
     class Config:
         env_file = ".env"
