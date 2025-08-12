@@ -89,6 +89,7 @@ classified AS (
     leg_end_time,
     sub_leg_start_time,
     sub_leg_end_time,
+    derived_reefer_status,
     rn  -- Include row number for reference if needed
   FROM filtered
 )
