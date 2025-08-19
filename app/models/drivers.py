@@ -100,6 +100,160 @@ class Driver(SQLModel, table=True):
                 return []
     
     @classmethod
+    def upsert(cls, driver_data: "DriverCallUpdate") -> Optional["Driver"]:
+        """Upsert a single driver (insert or update if exists) - only updates provided fields"""
+        logger.info(f'Upserting driver with ID: {driver_data.driverId}')
+        
+        with cls.get_session() as session:
+            try:
+                # Build dynamic SQL based on provided fields
+                provided_fields = []
+                provided_values = {}
+                update_clauses = []
+                
+                # Always include driverId
+                provided_fields.append("driverId")
+                provided_values["driverId"] = driver_data.driverId
+                
+                # Check each field and only include if it's not None
+                field_mappings = {
+                    "status": driver_data.status,
+                    "firstName": driver_data.firstName,
+                    "lastName": driver_data.lastName,
+                    "truckId": driver_data.truckId,
+                    "phoneNumber": driver_data.phoneNumber,
+                    "email": driver_data.email,
+                    "hiredOn": driver_data.hiredOn,
+                    "updatedOn": driver_data.updatedOn,
+                    "companyId": driver_data.companyId,
+                    "dispatcher": driver_data.dispatcher,
+                    "firstLanguage": driver_data.firstLanguage,
+                    "secondLanguage": driver_data.secondLanguage,
+                    "globalDnd": driver_data.globalDnd,
+                    "safetyCall": driver_data.safetyCall,
+                    "safetyMessage": driver_data.safetyMessage,
+                    "hosSupport": driver_data.hosSupport,
+                    "maintainanceCall": driver_data.maintainanceCall,
+                    "maintainanceMessage": driver_data.maintainanceMessage,
+                    "dispatchCall": driver_data.dispatchCall,
+                    "dispatchMessage": driver_data.dispatchMessage,
+                    "accountCall": driver_data.accountCall,
+                    "accountMessage": driver_data.accountMessage,
+                    "telegramId": driver_data.telegramId
+                }
+                
+                for field_name, field_value in field_mappings.items():
+                    if field_value is not None:
+                        provided_fields.append(field_name)
+                        provided_values[field_name] = field_value
+                        update_clauses.append(f"{field_name} = VALUES({field_name})")
+                
+                # Build the dynamic SQL
+                fields_str = ", ".join(provided_fields)
+                values_str = ", ".join([f":{field}" for field in provided_fields])
+                update_str = ", ".join(update_clauses)
+                
+                sql = f"""
+                    INSERT INTO driversDirectory ({fields_str})
+                    VALUES ({values_str})
+                    ON DUPLICATE KEY UPDATE {update_str}
+                """
+                
+                session.execute(text(sql), provided_values)
+                session.commit()
+                
+                # Return the updated/inserted driver
+                return cls.get_by_id(driver_data.driverId)
+                
+            except Exception as err:
+                logger.error(f'Database upsert error: {err}', exc_info=True)
+                session.rollback()
+                return None
+
+    @classmethod
+    def bulk_upsert(cls, drivers_data: List["DriverCallUpdate"]) -> List["Driver"]:
+        """Bulk upsert multiple drivers - only updates provided fields"""
+        logger.info(f'Bulk upserting {len(drivers_data)} drivers')
+        
+        with cls.get_session() as session:
+            try:
+                for driver_data in drivers_data:
+                    # Use the single upsert method for each driver to maintain consistency
+                    cls._execute_single_upsert(session, driver_data)
+                
+                session.commit()
+                
+                # Get all upserted drivers
+                driver_ids = [d.driverId for d in drivers_data if d.driverId]
+                if driver_ids:
+                    return cls.get_by_ids(driver_ids)
+                
+                return []
+                
+            except Exception as err:
+                logger.error(f'Database bulk upsert error: {err}', exc_info=True)
+                session.rollback()
+                return []
+    
+    @classmethod
+    def _execute_single_upsert(cls, session, driver_data: "DriverCallUpdate"):
+        """Helper method to execute a single upsert within an existing session"""
+        # Build dynamic SQL based on provided fields
+        provided_fields = []
+        provided_values = {}
+        update_clauses = []
+        
+        # Always include driverId
+        provided_fields.append("driverId")
+        provided_values["driverId"] = driver_data.driverId
+        
+        # Check each field and only include if it's not None
+        field_mappings = {
+            "status": driver_data.status,
+            "firstName": driver_data.firstName,
+            "lastName": driver_data.lastName,
+            "truckId": driver_data.truckId,
+            "phoneNumber": driver_data.phoneNumber,
+            "email": driver_data.email,
+            "hiredOn": driver_data.hiredOn,
+            "updatedOn": driver_data.updatedOn,
+            "companyId": driver_data.companyId,
+            "dispatcher": driver_data.dispatcher,
+            "firstLanguage": driver_data.firstLanguage,
+            "secondLanguage": driver_data.secondLanguage,
+            "globalDnd": driver_data.globalDnd,
+            "safetyCall": driver_data.safetyCall,
+            "safetyMessage": driver_data.safetyMessage,
+            "hosSupport": driver_data.hosSupport,
+            "maintainanceCall": driver_data.maintainanceCall,
+            "maintainanceMessage": driver_data.maintainanceMessage,
+            "dispatchCall": driver_data.dispatchCall,
+            "dispatchMessage": driver_data.dispatchMessage,
+            "accountCall": driver_data.accountCall,
+            "accountMessage": driver_data.accountMessage,
+            "telegramId": driver_data.telegramId
+        }
+        
+        for field_name, field_value in field_mappings.items():
+            if field_value is not None:
+                provided_fields.append(field_name)
+                provided_values[field_name] = field_value
+                update_clauses.append(f"{field_name} = VALUES({field_name})")
+        
+        # Build the dynamic SQL
+        fields_str = ", ".join(provided_fields)
+        values_str = ", ".join([f":{field}" for field in provided_fields])
+        update_str = ", ".join(update_clauses)
+        
+        sql = f"""
+            INSERT INTO driversDirectory ({fields_str})
+            VALUES ({values_str})
+            ON DUPLICATE KEY UPDATE {update_str}
+        """
+        
+        session.execute(text(sql), provided_values)
+
+    @classmethod
     def bulk_update_calling_info(cls, updates: List["DriverCallUpdate"]) -> None:
         """Bulk update driver calling information"""
         logger.info('setDriverCalling request reach out to correct service')
