@@ -58,6 +58,33 @@ async def get_truck_mapping_by_id(truck_id: int):
     return mappings[0]
 
 
+@router.post("/upsert", response_model=TruckMapping)
+async def upsert_truck_mapping(mapping_data: TruckMappingCreate):
+    """
+    Upsert a truck mapping (insert or update if exists) - only updates provided fields
+    """
+    logger.info(f"Upserting truck mapping for unit: {mapping_data.TruckUnit}")
+    
+    if not mapping_data.TruckUnit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TruckUnit is required for upsert operation"
+        )
+    
+    mapping = TruckMapping.upsert(
+        truck_unit=mapping_data.TruckUnit,
+        truck_id=mapping_data.TruckId
+    )
+    
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upsert truck mapping"
+        )
+    
+    return mapping
+
+
 @router.post("/", response_model=TruckMapping)
 async def create_truck_mapping(mapping_data: TruckMappingCreate):
     """
