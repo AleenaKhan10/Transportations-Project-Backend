@@ -1,5 +1,5 @@
 from typing import Optional, List
-from sqlmodel import SQLModel, Field, Session, select
+from sqlmodel import SQLModel, Field, Session, select, text
 from db import engine
 from helpers import logger
 
@@ -90,6 +90,54 @@ class TempSensorMapping(SQLModel, table=True):
                 logger.error(f'Database update error: {err}', exc_info=True)
                 return None
     
+    @classmethod
+    def upsert(cls, sensor_name: str, sensor_id: Optional[int] = None) -> Optional["TempSensorMapping"]:
+        """Upsert a temp sensor mapping (insert or update if exists) - only updates provided fields"""
+        logger.info(f'Upserting temp sensor mapping for name: {sensor_name}')
+        
+        with cls.get_session() as session:
+            try:
+                # Build dynamic SQL based on provided fields
+                provided_fields = ["TempSensorNAME"]
+                provided_values = {"TempSensorNAME": sensor_name}
+                update_clauses = []
+                
+                # Only include TempSensorID if it's provided (not None)
+                if sensor_id is not None:
+                    provided_fields.append("TempSensorID")
+                    provided_values["TempSensorID"] = sensor_id
+                    update_clauses.append("TempSensorID = VALUES(TempSensorID)")
+                
+                # If no fields to update besides TempSensorNAME, still need to handle upsert
+                if not update_clauses:
+                    # Just insert if not exists, do nothing on duplicate
+                    sql = """
+                        INSERT IGNORE INTO temp_sensor_mapping (TempSensorNAME)
+                        VALUES (:TempSensorNAME)
+                    """
+                else:
+                    # Build the dynamic SQL with updates
+                    fields_str = ", ".join(provided_fields)
+                    values_str = ", ".join([f":{field}" for field in provided_fields])
+                    update_str = ", ".join(update_clauses)
+                    
+                    sql = f"""
+                        INSERT INTO temp_sensor_mapping ({fields_str})
+                        VALUES ({values_str})
+                        ON DUPLICATE KEY UPDATE {update_str}
+                    """
+                
+                session.execute(text(sql), provided_values)
+                session.commit()
+                
+                # Return the updated/inserted temp sensor mapping
+                return cls.get_by_sensor_name(sensor_name)
+                
+            except Exception as err:
+                logger.error(f'Database upsert error: {err}', exc_info=True)
+                session.rollback()
+                return None
+
     @classmethod
     def delete(cls, sensor_name: str) -> bool:
         """Delete a temp sensor mapping"""

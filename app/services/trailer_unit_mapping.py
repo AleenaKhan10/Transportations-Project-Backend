@@ -58,6 +58,33 @@ async def get_trailer_unit_mapping_by_id(trailer_id: int):
     return mappings[0]
 
 
+@router.post("/upsert", response_model=TrailerUnitMapping)
+async def upsert_trailer_unit_mapping(mapping_data: TrailerUnitMappingCreate):
+    """
+    Upsert a trailer unit mapping (insert or update if exists) - only updates provided fields
+    """
+    logger.info(f"Upserting trailer unit mapping for unit: {mapping_data.TrailerUnit}")
+    
+    if not mapping_data.TrailerUnit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TrailerUnit is required for upsert operation"
+        )
+    
+    mapping = TrailerUnitMapping.upsert(
+        trailer_unit=mapping_data.TrailerUnit,
+        trailer_id=mapping_data.TrailerID
+    )
+    
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upsert trailer unit mapping"
+        )
+    
+    return mapping
+
+
 @router.post("/", response_model=TrailerUnitMapping)
 async def create_trailer_unit_mapping(mapping_data: TrailerUnitMappingCreate):
     """
