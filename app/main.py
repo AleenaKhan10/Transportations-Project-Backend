@@ -13,6 +13,10 @@ from services.vapi import router as vapi_router, router_no_auth as vapi_router_n
 from services.reports import router as reports_router
 from services.pcmiler import router as pcmiler_router
 from services.slack import router as slack_router
+from services.weather import router as weather_router
+from services.truck_mapping import router as truck_mapping_router
+from services.temp_sensor_mapping import router as temp_sensor_mapping_router
+from services.trailer_unit_mapping import router as trailer_unit_mapping_router
 
 # Import new admin routers
 from services.admin_users import router as admin_users_router
@@ -53,6 +57,10 @@ app.include_router(reports_router, tags=["reports"])
 app.include_router(pcmiler_router, tags=["pcmiler"])
 app.include_router(webhook_router, tags=["webhook"])
 app.include_router(slack_router, tags=["slack"])
+app.include_router(weather_router, tags=["weather"])
+app.include_router(truck_mapping_router, tags=["truck-mapping"])
+app.include_router(temp_sensor_mapping_router, tags=["temp-sensor-mapping"])
+app.include_router(trailer_unit_mapping_router, tags=["trailer-unit-mapping"])
 
 # Include new admin routers
 app.include_router(admin_users_router)
