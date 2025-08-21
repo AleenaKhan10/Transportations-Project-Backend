@@ -58,6 +58,33 @@ async def get_temp_sensor_mapping_by_id(sensor_id: int):
     return mappings[0]
 
 
+@router.post("/upsert", response_model=TempSensorMapping)
+async def upsert_temp_sensor_mapping(mapping_data: TempSensorMappingCreate):
+    """
+    Upsert a temp sensor mapping (insert or update if exists) - only updates provided fields
+    """
+    logger.info(f"Upserting temp sensor mapping for name: {mapping_data.TempSensorNAME}")
+    
+    if not mapping_data.TempSensorNAME:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="TempSensorNAME is required for upsert operation"
+        )
+    
+    mapping = TempSensorMapping.upsert(
+        sensor_name=mapping_data.TempSensorNAME,
+        sensor_id=mapping_data.TempSensorID
+    )
+    
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upsert temp sensor mapping"
+        )
+    
+    return mapping
+
+
 @router.post("/", response_model=TempSensorMapping)
 async def create_temp_sensor_mapping(mapping_data: TempSensorMappingCreate):
     """
