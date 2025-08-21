@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # VAPI Phone Number ID (required for campaigns)
     VAPI_PHONENUMBER_ID: str = ""
     
+    # Weather API settings
+    WEATHER_API_KEY: str = "c6138ff5377046c6979224726251408"
+    WEATHER_API_BASE_URL: str = "http://api.weatherapi.com/v1"
+    
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

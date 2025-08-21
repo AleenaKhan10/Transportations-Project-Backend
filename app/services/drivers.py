@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
 from helpers import logger
@@ -31,6 +31,56 @@ async def get_driver_data_endpoint(driver_id: str):
 # async def get_driver_data_structured(driver_id: str):
 #     logger.info("getting driver's structured data")
 #     return Driver.get_by_id(driver_id).to_structured_response()
+
+
+@router.post("/upsert", response_model=Driver)
+async def upsert_driver(driver_data: DriverCallUpdate):
+    """
+    Upsert a single driver (insert or update if exists)
+    """
+    logger.info(f"Upserting driver with ID: {driver_data.driverId}")
+    
+    if not driver_data.driverId:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="driverId is required for upsert operation"
+        )
+    
+    driver = Driver.upsert(driver_data)
+    
+    if not driver:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to upsert driver"
+        )
+    
+    return driver
+
+
+@router.post("/upsert/bulk", response_model=List[Driver])
+async def bulk_upsert_drivers(drivers_data: List[DriverCallUpdate]):
+    """
+    Bulk upsert multiple drivers (insert or update if exists)
+    """
+    logger.info(f"Bulk upserting {len(drivers_data)} drivers")
+    
+    # Validate that all drivers have driverId
+    for i, driver_data in enumerate(drivers_data):
+        if not driver_data.driverId:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"driverId is required for driver at index {i}"
+            )
+    
+    drivers = Driver.bulk_upsert(drivers_data)
+    
+    if not drivers:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to bulk upsert drivers"
+        )
+    
+    return drivers
 
 
 @router.post("/settings/call/bulk")
