@@ -61,21 +61,21 @@ classified AS (
     samsara_temp_time,
     ABS(ROUND(required_temp - samsara_temp, 3)) AS temp_diff,
     CASE 
-      WHEN required_reefer_mode_id = 0 THEN 'ℹ️ Dry Load'
       WHEN ((leg_id = 1 AND status_id = 3) OR (leg_id > 1 AND status_id NOT IN (0, 4))) AND samsara_temp IS NOT NULL THEN 
         CASE 
+          WHEN required_reefer_mode_id = 0 THEN 'ℹ️ Dry Load'
           WHEN required_temp = 99 THEN '🔥 99°F Required Temp'
           WHEN required_temp != driver_set_temp 
             AND driver_set_temp IS NOT NULL
             AND reefer_remote_mode != 'Dead'
             THEN '⚠️ Driver Setpoint Mismatch'
-          WHEN 
-            ABS(samsara_temp - required_temp) > max_allowed_deviation 
-            THEN '🚨 Temperature Out of Range'
           WHEN required_reefer_mode_id IN (1, 2) 
             AND reefer_mode_id = 0 
             AND ABS(samsara_temp - required_temp) > max_allowed_deviation -- NOTE: even if the temp is within limit, keeping the reefer off might be problematic
             THEN '‼️ Attention / Issue ‼️'
+          WHEN 
+            ABS(samsara_temp - required_temp) > max_allowed_deviation 
+            THEN '🚨 Temperature Out of Range'
           ELSE NULL
         END
       ELSE NULL
