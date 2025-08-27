@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     DB_PASS: str
     DB_HOST: str | None = None
     DB_NAME: str
+    DB_PORT: int
     
     # Cloud Run specific settings for Database. 
     # For eg: `/cloudsql/agy-intelligence-hub:us-central1:agy-intelligence-hub-instance`
