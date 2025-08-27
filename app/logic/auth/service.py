@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlmodel import Session, select, func
 from passlib.context import CryptContext
 import secrets
@@ -11,8 +11,21 @@ from models.user import (
     PendingEmailVerification
 )
 from db.database import engine
+from db.retry import db_retry
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def utc_now():
+    """Get current UTC time as timezone-aware datetime"""
+    return datetime.now(timezone.utc)
+
+def make_timezone_aware(dt):
+    """Convert naive datetime to timezone-aware UTC datetime"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 class UserService:
     @staticmethod
@@ -68,8 +81,8 @@ class UserService:
                 existing.password_hash = UserService.hash_password(user_data.password)
                 existing.full_name = getattr(user_data, 'full_name', user_data.username)
                 existing.otp_code = otp_code
-                existing.created_at = datetime.utcnow()
-                existing.expires_at = datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
+                existing.created_at = utc_now()
+                existing.expires_at = utc_now() + timedelta(minutes=10)  # 10 minutes expiry
                 session.add(existing)
                 session.commit()
                 session.refresh(existing)
@@ -82,7 +95,7 @@ class UserService:
                     password_hash=UserService.hash_password(user_data.password),
                     full_name=getattr(user_data, 'full_name', user_data.username),
                     otp_code=otp_code,
-                    expires_at=datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
+                    expires_at=utc_now() + timedelta(minutes=10)  # 10 minutes expiry
                 )
                 
                 session.add(pending_verification)
@@ -108,7 +121,7 @@ class UserService:
                 select(PendingEmailVerification).where(
                     PendingEmailVerification.email == email,
                     PendingEmailVerification.otp_code == otp_code,
-                    PendingEmailVerification.expires_at > datetime.utcnow()
+                    PendingEmailVerification.expires_at > utc_now()
                 )
             ).first()
             
@@ -154,6 +167,7 @@ class UserService:
             return user
     
     @staticmethod
+    @db_retry(max_retries=3, delay=1.0)
     def authenticate_user(username: str, password: str) -> Optional[User]:
         with Session(engine) as session:
             # Try to find user by username or email
@@ -179,11 +193,13 @@ class UserService:
             return session.get(User, user_id)
     
     @staticmethod
+    @db_retry(max_retries=3, delay=1.0)
     def get_user_by_username(username: str) -> Optional[User]:
         with Session(engine) as session:
             return session.exec(select(User).where(User.username == username)).first()
     
     @staticmethod
+    @db_retry(max_retries=3, delay=1.0)
     def get_user_by_email(email: str) -> Optional[User]:
         with Session(engine) as session:
             return session.exec(select(User).where(User.email == email)).first()
@@ -209,7 +225,7 @@ class UserService:
             for field, value in update_data.items():
                 setattr(user, field, value)
             
-            user.updated_at = datetime.utcnow()
+            user.updated_at = utc_now()
             session.add(user)
             
             # Update role if provided
@@ -270,7 +286,7 @@ class UserService:
         with Session(engine) as session:
             user = session.get(User, user_id)
             if user:
-                user.last_login_at = datetime.utcnow()
+                user.last_login_at = utc_now()
                 session.add(user)
                 session.commit()
 
@@ -280,7 +296,7 @@ class SessionService:
     def create_session(user_id: int, ip_address: str, user_agent: str, expires_in_hours: int = 24) -> UserSession:
         with Session(engine) as session:
             session_id = str(uuid.uuid4())
-            expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
+            expires_at = utc_now() + timedelta(hours=expires_in_hours)
             
             user_session = UserSession(
                 id=session_id,
@@ -316,7 +332,7 @@ class SessionService:
         with Session(engine) as session:
             expired_sessions = session.exec(
                 select(UserSession)
-                .where(UserSession.expires_at < datetime.utcnow())
+                .where(UserSession.expires_at < utc_now())
                 .where(UserSession.is_active == True)
             ).all()
             
@@ -355,7 +371,7 @@ class SessionService:
             return session.exec(
                 select(func.count(UserSession.id))
                 .where(UserSession.is_active == True)
-                .where(UserSession.expires_at > datetime.utcnow())
+                .where(UserSession.expires_at > utc_now())
             ).one()
 
 class TokenStatusService:
@@ -387,7 +403,10 @@ class TokenStatusService:
                 return "not_found"
             
             # Check if token is expired
-            if user_session.expires_at < datetime.utcnow():
+            expires_at = make_timezone_aware(user_session.expires_at)
+            current_time = utc_now()
+            
+            if expires_at < current_time:
                 # Auto-mark as expired if not already
                 if user_session.token_status == "active":
                     user_session.token_status = "expired"
@@ -422,7 +441,7 @@ class TokenStatusService:
         with Session(engine) as session:
             expired_sessions = session.exec(
                 select(UserSession)
-                .where(UserSession.expires_at < datetime.utcnow())
+                .where(UserSession.expires_at < utc_now())
                 .where(UserSession.token_status == "active")
             ).all()
             

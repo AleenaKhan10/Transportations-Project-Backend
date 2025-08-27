@@ -1,5 +1,5 @@
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 import secrets
 
@@ -21,9 +21,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, j
     import uuid
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     # Add JWT ID for session tracking
     jti = jwt_id or str(uuid.uuid4())
@@ -34,7 +34,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None, j
 def create_refresh_token(data: dict, jwt_id: Optional[str] = None):
     import uuid
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=7)  # Refresh token expires in 7 days
+    expire = datetime.now(timezone.utc) + timedelta(days=7)  # Refresh token expires in 7 days
     
     # Add JWT ID for session tracking
     jti = jwt_id or str(uuid.uuid4())
@@ -148,7 +148,7 @@ def rate_limit(max_requests: int, window_minutes: int):
         @wraps(func)
         async def wrapper(request: Request, *args, **kwargs):
             client_ip = request.client.host
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             
             # Clean old entries
             cutoff_time = current_time - timedelta(minutes=window_minutes)

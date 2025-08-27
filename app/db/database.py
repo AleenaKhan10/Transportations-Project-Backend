@@ -1,19 +1,37 @@
 from sqlmodel import create_engine
 from sqlalchemy.engine.url import URL
-from sqlalchemy.util import EMPTY_DICT
+from sqlalchemy import event
 from config import settings
 
 
 DATABASE_URL = URL.create(
-    drivername="mysql+pymysql",
+    drivername="postgresql+psycopg2",
     username=settings.DB_USER,
     password=settings.DB_PASS,
     host=settings.DB_HOST,
+    port=settings.DB_PORT,
     database=settings.DB_NAME,
-    query={"unix_socket": settings.INSTANCE_UNIX_SOCKET} if settings.INSTANCE_UNIX_SOCKET else EMPTY_DICT,
 )
 
 # For debugging purposes, print the database URL
 print(f"Database URL: {DATABASE_URL}")
 
-engine = create_engine(DATABASE_URL, echo=True)
+# Create engine with connection pooling and retry settings
+engine = create_engine(
+    DATABASE_URL, 
+    echo=True,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,  # Validates connections before use
+    pool_recycle=3600,   # Recycle connections after 1 hour
+    connect_args={
+        "connect_timeout": 10,
+        "application_name": "agy-backend"
+    }
+)
+
+# Set search path to dev schema after connection
+@event.listens_for(engine, "connect")
+def set_search_path(dbapi_connection, connection_record):
+    with dbapi_connection.cursor() as cursor:
+        cursor.execute("SET search_path TO dev, public")
