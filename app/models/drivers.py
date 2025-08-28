@@ -275,6 +275,30 @@ class Driver(SQLModel, table=True):
                                 :maintainanceMessage, :truckId, :secondLanguage, :dispatchCall, :phoneNumber,
                                 :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage, :telegramId
                             )
+                            ON CONFLICT ("driverId") DO UPDATE SET
+                                "updatedOn" = COALESCE(EXCLUDED."updatedOn", driversdirectory."updatedOn"),
+                                "safetyMessage" = COALESCE(EXCLUDED."safetyMessage", driversdirectory."safetyMessage"),
+                                status = COALESCE(EXCLUDED.status, driversdirectory.status),
+                                "companyId" = COALESCE(EXCLUDED."companyId", driversdirectory."companyId"),
+                                "hosSupport" = COALESCE(EXCLUDED."hosSupport", driversdirectory."hosSupport"),
+                                "firstName" = COALESCE(EXCLUDED."firstName", driversdirectory."firstName"),
+                                dispatcher = COALESCE(EXCLUDED.dispatcher, driversdirectory.dispatcher),
+                                "maintainanceCall" = COALESCE(EXCLUDED."maintainanceCall", driversdirectory."maintainanceCall"),
+                                "lastName" = COALESCE(EXCLUDED."lastName", driversdirectory."lastName"),
+                                "firstLanguage" = COALESCE(EXCLUDED."firstLanguage", driversdirectory."firstLanguage"),
+                                "maintainanceMessage" = COALESCE(EXCLUDED."maintainanceMessage", driversdirectory."maintainanceMessage"),
+                                "truckId" = COALESCE(EXCLUDED."truckId", driversdirectory."truckId"),
+                                "secondLanguage" = COALESCE(EXCLUDED."secondLanguage", driversdirectory."secondLanguage"),
+                                "dispatchCall" = COALESCE(EXCLUDED."dispatchCall", driversdirectory."dispatchCall"),
+                                "phoneNumber" = COALESCE(EXCLUDED."phoneNumber", driversdirectory."phoneNumber"),
+                                "globalDnd" = COALESCE(EXCLUDED."globalDnd", driversdirectory."globalDnd"),
+                                "dispatchMessage" = COALESCE(EXCLUDED."dispatchMessage", driversdirectory."dispatchMessage"),
+                                email = COALESCE(EXCLUDED.email, driversdirectory.email),
+                                "safetyCall" = COALESCE(EXCLUDED."safetyCall", driversdirectory."safetyCall"),
+                                "accountCall" = COALESCE(EXCLUDED."accountCall", driversdirectory."accountCall"),
+                                "hiredOn" = COALESCE(EXCLUDED."hiredOn", driversdirectory."hiredOn"),
+                                "accountMessage" = COALESCE(EXCLUDED."accountMessage", driversdirectory."accountMessage"),
+                                "telegramId" = COALESCE(EXCLUDED."telegramId", driversdirectory."telegramId")
                             """),
                         {
                             "driverId": driver_update.driverId,
