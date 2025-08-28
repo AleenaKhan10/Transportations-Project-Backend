@@ -1,4 +1,4 @@
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from typing import Optional
 
 from fastapi.security import OAuth2PasswordRequestForm
@@ -116,9 +116,9 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
             user_id=user.id,
             ip_address=client_ip,
             user_agent=request.headers.get("User-Agent"),
-            created_at=datetime.utcnow(),
-            last_activity=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(hours=24),  # 24 hour session
+            created_at=datetime.now(timezone.utc),
+            last_activity=datetime.now(timezone.utc),
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=24),  # 24 hour session
             is_active=True,
             token_status="active",  # Token starts as active
             token_jti=jwt_id  # Save JWT ID for tracking
@@ -359,9 +359,9 @@ async def refresh_token(request: Request, refresh_token: str):
         ).first()
         
         if user_session:
-            user_session.last_activity = datetime.utcnow()
+            user_session.last_activity = datetime.now(timezone.utc)
             # Optionally extend session expiration
-            user_session.expires_at = datetime.utcnow() + timedelta(hours=24)
+            user_session.expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
             db_session.add(user_session)
             db_session.commit()
     
