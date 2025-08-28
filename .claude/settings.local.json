@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/E:\\e\\upwork\\Andy\\agy-backend/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
