@@ -8,7 +8,7 @@ from helpers import logger
 
 
 class Driver(SQLModel, table=True):
-    __tablename__ = "driversDirectory"
+    __tablename__ = "driversdirectory"
     
     driverId: str = Field(primary_key=True)
     status: Optional[str] = None
@@ -154,7 +154,7 @@ class Driver(SQLModel, table=True):
                 update_str = ", ".join(update_clauses)
                 
                 sql = f"""
-                    INSERT INTO driversDirectory ({fields_str})
+                    INSERT INTO driversdirectory ({fields_str})
                     VALUES ({values_str})
                     ON DUPLICATE KEY UPDATE {update_str}
                 """
@@ -246,7 +246,7 @@ class Driver(SQLModel, table=True):
         update_str = ", ".join(update_clauses)
         
         sql = f"""
-            INSERT INTO driversDirectory ({fields_str})
+            INSERT INTO driversdirectory ({fields_str})
             VALUES ({values_str})
             ON DUPLICATE KEY UPDATE {update_str}
         """
@@ -263,7 +263,7 @@ class Driver(SQLModel, table=True):
                 for driver_update in updates:
                     session.execute(
                         text("""
-                            INSERT INTO driversDirectory (
+                            INSERT INTO driversdirectory (
                                 driverId, updatedOn, safetyMessage, status, companyId, hosSupport,
                                 firstName, dispatcher, maintainanceCall, lastName, firstLanguage,
                                 maintainanceMessage, truckId, secondLanguage, dispatchCall, phoneNumber,
