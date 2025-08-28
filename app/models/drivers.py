@@ -146,7 +146,7 @@ class Driver(SQLModel, table=True):
                     if field_value is not None:
                         provided_fields.append(field_name)
                         provided_values[field_name] = field_value
-                        update_clauses.append(f"{field_name} = VALUES({field_name})")
+                        update_clauses.append(f"{field_name} = EXCLUDED.{field_name}")
                 
                 # Build the dynamic SQL
                 fields_str = ", ".join(provided_fields)
@@ -156,7 +156,7 @@ class Driver(SQLModel, table=True):
                 sql = f"""
                     INSERT INTO driversdirectory ({fields_str})
                     VALUES ({values_str})
-                    ON DUPLICATE KEY UPDATE {update_str}
+                    ON CONFLICT ("driverId") DO UPDATE SET {update_str}
                 """
                 
                 session.execute(text(sql), provided_values)
@@ -238,7 +238,7 @@ class Driver(SQLModel, table=True):
             if field_value is not None:
                 provided_fields.append(field_name)
                 provided_values[field_name] = field_value
-                update_clauses.append(f"{field_name} = VALUES({field_name})")
+                update_clauses.append(f"{field_name} = EXCLUDED.{field_name}")
         
         # Build the dynamic SQL
         fields_str = ", ".join(provided_fields)
@@ -248,7 +248,7 @@ class Driver(SQLModel, table=True):
         sql = f"""
             INSERT INTO driversdirectory ({fields_str})
             VALUES ({values_str})
-            ON DUPLICATE KEY UPDATE {update_str}
+            ON CONFLICT ("driverId") DO UPDATE SET {update_str}
         """
         
         session.execute(text(sql), provided_values)
@@ -264,10 +264,10 @@ class Driver(SQLModel, table=True):
                     session.execute(
                         text("""
                             INSERT INTO driversdirectory (
-                                driverId, updatedOn, safetyMessage, status, companyId, hosSupport,
-                                firstName, dispatcher, maintainanceCall, lastName, firstLanguage,
-                                maintainanceMessage, truckId, secondLanguage, dispatchCall, phoneNumber,
-                                globalDnd, dispatchMessage, email, safetyCall, accountCall, hiredOn, accountMessage, telegramId
+                                "driverId", "updatedOn", "safetyMessage", status, "companyId", "hosSupport",
+                                "firstName", dispatcher, "maintainanceCall", "lastName", "firstLanguage",
+                                "maintainanceMessage", "truckId", "secondLanguage", "dispatchCall", "phoneNumber",
+                                "globalDnd", "dispatchMessage", email, "safetyCall", "accountCall", "hiredOn", "accountMessage", "telegramId"
                             )
                             VALUES (
                                 :driverId, :updatedOn, :safetyMessage, :status, :companyId, :hosSupport,
@@ -275,30 +275,6 @@ class Driver(SQLModel, table=True):
                                 :maintainanceMessage, :truckId, :secondLanguage, :dispatchCall, :phoneNumber,
                                 :globalDnd, :dispatchMessage, :email, :safetyCall, :accountCall, :hiredOn, :accountMessage, :telegramId
                             )
-                            ON DUPLICATE KEY UPDATE
-                                updatedOn = VALUES(updatedOn),
-                                safetyMessage = VALUES(safetyMessage),
-                                status = VALUES(status),
-                                companyId = VALUES(companyId),
-                                hosSupport = VALUES(hosSupport),
-                                firstName = VALUES(firstName),
-                                dispatcher = VALUES(dispatcher),
-                                maintainanceCall = VALUES(maintainanceCall),
-                                lastName = VALUES(lastName),
-                                firstLanguage = VALUES(firstLanguage),
-                                maintainanceMessage = VALUES(maintainanceMessage),
-                                truckId = VALUES(truckId),
-                                secondLanguage = VALUES(secondLanguage),
-                                dispatchCall = VALUES(dispatchCall),
-                                phoneNumber = VALUES(phoneNumber),
-                                globalDnd = VALUES(globalDnd),
-                                dispatchMessage = VALUES(dispatchMessage),
-                                email = VALUES(email),
-                                safetyCall = VALUES(safetyCall),
-                                accountCall = VALUES(accountCall),
-                                hiredOn = VALUES(hiredOn),
-                                accountMessage = VALUES(accountMessage),
-                                telegramId = VALUES(telegramId)
                             """),
                         {
                             "driverId": driver_update.driverId,
