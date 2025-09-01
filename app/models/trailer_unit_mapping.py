@@ -106,25 +106,26 @@ class TrailerUnitMapping(SQLModel, table=True):
                 if trailer_id is not None:
                     provided_fields.append("TrailerID")
                     provided_values["TrailerID"] = trailer_id
-                    update_clauses.append("TrailerID = VALUES(TrailerID)")
+                    update_clauses.append('"TrailerID" = EXCLUDED."TrailerID"')
                 
                 # If no fields to update besides TrailerUnit, still need to handle upsert
                 if not update_clauses:
                     # Just insert if not exists, do nothing on duplicate
                     sql = """
-                        INSERT IGNORE INTO trailer_unit_mapping (TrailerUnit)
+                        INSERT INTO trailer_unit_mapping ("TrailerUnit")
                         VALUES (:TrailerUnit)
+                        ON CONFLICT ("TrailerUnit") DO NOTHING
                     """
                 else:
-                    # Build the dynamic SQL with updates
-                    fields_str = ", ".join(provided_fields)
+                    # Build the dynamic SQL with updates - quote column names for PostgreSQL
+                    fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                     values_str = ", ".join([f":{field}" for field in provided_fields])
                     update_str = ", ".join(update_clauses)
                     
                     sql = f"""
                         INSERT INTO trailer_unit_mapping ({fields_str})
                         VALUES ({values_str})
-                        ON DUPLICATE KEY UPDATE {update_str}
+                        ON CONFLICT ("TrailerUnit") DO UPDATE SET {update_str}
                     """
                 
                 session.execute(text(sql), provided_values)
