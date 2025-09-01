@@ -184,7 +184,7 @@ async def get_user(
 async def update_user(
     request: Request,
     user_id: int,
-    user_data: UserUpdate,
+    user_data: dict,  # Accept dict instead of UserUpdate to handle camelCase
     current_user: User = Depends(require_user_management)
 ):
     """Update user - FAST VERSION"""
@@ -206,11 +206,23 @@ async def update_user(
             "department": user.department
         }
         
-        # Update user fields directly - no separate service call
-        update_data = user_data.dict(exclude_unset=True, exclude={"role_id"})
+        # Map camelCase to snake_case
+        field_mapping = {
+            "fullName": "full_name",
+            "roleId": "role_id"
+        }
+        
+        # Convert camelCase keys to snake_case
+        update_data = {}
+        for key, value in user_data.items():
+            # Map camelCase to snake_case if needed
+            mapped_key = field_mapping.get(key, key)
+            if mapped_key != "role_id" and hasattr(user, mapped_key):
+                update_data[mapped_key] = value
+        
+        # Update user fields directly
         for field, value in update_data.items():
-            if hasattr(user, field):
-                setattr(user, field, value)
+            setattr(user, field, value)
         
         user.updated_at = datetime.utcnow()
         session.add(user)
@@ -222,8 +234,8 @@ async def update_user(
         
         # Build new values for audit
         new_values = update_data.copy()
-        if user_data.role_id:
-            new_values["role_id"] = user_data.role_id
+        if user_data.get("roleId") or user_data.get("role_id"):
+            new_values["role_id"] = user_data.get("roleId") or user_data.get("role_id")
         
         # Fast audit log without extra queries
         from logic.auth.service import AuditService
