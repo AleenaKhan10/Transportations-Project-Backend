@@ -146,10 +146,10 @@ class Driver(SQLModel, table=True):
                     if field_value is not None:
                         provided_fields.append(field_name)
                         provided_values[field_name] = field_value
-                        update_clauses.append(f"{field_name} = EXCLUDED.{field_name}")
+                        update_clauses.append(f'"{field_name}" = EXCLUDED."{field_name}"')
                 
-                # Build the dynamic SQL
-                fields_str = ", ".join(provided_fields)
+                # Build the dynamic SQL - quote column names for PostgreSQL
+                fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                 values_str = ", ".join([f":{field}" for field in provided_fields])
                 update_str = ", ".join(update_clauses)
                 
@@ -238,10 +238,10 @@ class Driver(SQLModel, table=True):
             if field_value is not None:
                 provided_fields.append(field_name)
                 provided_values[field_name] = field_value
-                update_clauses.append(f"{field_name} = EXCLUDED.{field_name}")
+                update_clauses.append(f'"{field_name}" = EXCLUDED."{field_name}"')
         
-        # Build the dynamic SQL
-        fields_str = ", ".join(provided_fields)
+        # Build the dynamic SQL - quote column names for PostgreSQL
+        fields_str = ", ".join([f'"{field}"' for field in provided_fields])
         values_str = ", ".join([f":{field}" for field in provided_fields])
         update_str = ", ".join(update_clauses)
         

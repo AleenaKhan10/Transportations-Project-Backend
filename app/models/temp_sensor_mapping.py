@@ -106,25 +106,26 @@ class TempSensorMapping(SQLModel, table=True):
                 if sensor_id is not None:
                     provided_fields.append("TempSensorID")
                     provided_values["TempSensorID"] = sensor_id
-                    update_clauses.append("TempSensorID = VALUES(TempSensorID)")
+                    update_clauses.append('"TempSensorID" = EXCLUDED."TempSensorID"')
                 
                 # If no fields to update besides TempSensorNAME, still need to handle upsert
                 if not update_clauses:
                     # Just insert if not exists, do nothing on duplicate
                     sql = """
-                        INSERT IGNORE INTO temp_sensor_mapping (TempSensorNAME)
+                        INSERT INTO temp_sensor_mapping ("TempSensorNAME")
                         VALUES (:TempSensorNAME)
+                        ON CONFLICT ("TempSensorNAME") DO NOTHING
                     """
                 else:
-                    # Build the dynamic SQL with updates
-                    fields_str = ", ".join(provided_fields)
+                    # Build the dynamic SQL with updates - quote column names for PostgreSQL
+                    fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                     values_str = ", ".join([f":{field}" for field in provided_fields])
                     update_str = ", ".join(update_clauses)
                     
                     sql = f"""
                         INSERT INTO temp_sensor_mapping ({fields_str})
                         VALUES ({values_str})
-                        ON DUPLICATE KEY UPDATE {update_str}
+                        ON CONFLICT ("TempSensorNAME") DO UPDATE SET {update_str}
                     """
                 
                 session.execute(text(sql), provided_values)
