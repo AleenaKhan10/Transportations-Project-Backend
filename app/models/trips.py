@@ -48,6 +48,8 @@ class Trip(SQLModel, table=True):
     tempF: Optional[float] = None
     reeferModeLabel: Optional[str] = Field(max_length=50, default=None)
     ditatGpsSpeed: Optional[float] = None
+    dispatcher: Optional[str] = Field(max_length=100, default=None)
+    dispatcher: Optional[str] = Field(max_length=100, default=None)
     
     @classmethod
     def get_session(cls) -> Session:
@@ -149,25 +151,26 @@ class Trip(SQLModel, table=True):
                     if value is not None and hasattr(cls, key):
                         provided_fields.append(key)
                         provided_values[key] = value
-                        update_clauses.append(f"{key} = VALUES({key})")
+                        update_clauses.append(f'"{key}" = EXCLUDED."{key}"')
                 
                 # If no fields to update besides tripId, still need to handle upsert
                 if not update_clauses:
                     # Just insert if not exists, do nothing on duplicate
                     sql = """
-                        INSERT IGNORE INTO trips (tripId)
+                        INSERT INTO trips ("tripId")
                         VALUES (:tripId)
+                        ON CONFLICT ("tripId") DO NOTHING
                     """
                 else:
-                    # Build the dynamic SQL with updates
-                    fields_str = ", ".join(provided_fields)
+                    # Build the dynamic SQL with updates - quote column names for PostgreSQL
+                    fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                     values_str = ", ".join([f":{field}" for field in provided_fields])
                     update_str = ", ".join(update_clauses)
                     
                     sql = f"""
                         INSERT INTO trips ({fields_str})
                         VALUES ({values_str})
-                        ON DUPLICATE KEY UPDATE {update_str}
+                        ON CONFLICT ("tripId") DO UPDATE SET {update_str}
                     """
                 
                 session.execute(text(sql), provided_values)
@@ -241,6 +244,8 @@ class TripCreate(SQLModel):
     tempF: Optional[float] = None
     reeferModeLabel: Optional[str] = Field(max_length=50, default=None)
     ditatGpsSpeed: Optional[float] = None
+    dispatcher: Optional[str] = Field(max_length=100, default=None)
+    dispatcher: Optional[str] = Field(max_length=100, default=None)
 
 
 class TripUpdate(SQLModel):
@@ -283,3 +288,4 @@ class TripUpdate(SQLModel):
     tempF: Optional[float] = None
     reeferModeLabel: Optional[str] = Field(max_length=50, default=None)
     ditatGpsSpeed: Optional[float] = None
+    dispatcher: Optional[str] = Field(max_length=100, default=None)
