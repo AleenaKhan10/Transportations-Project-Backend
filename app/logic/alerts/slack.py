@@ -144,7 +144,7 @@ def send_slack_temp_alerts():
     filters = get_excluded_alert_filters()
     
     query = f"""
-      SELECT * FROM `agy-intelligence-hub.diamond.get_master_with_alerts`(TRUE)
+      SELECT * FROM `agy-intelligence-hub.diamond.get_master_with_alerts_v2`(TRUE)
       WHERE 
         samsara_temp_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {INTERVAL} {INTERVAL_UNIT.value})
       AND 
