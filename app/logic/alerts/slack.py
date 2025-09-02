@@ -81,7 +81,8 @@ alert_templates = {
             "> *Driver Set:* `{driver_set_temp}°`\n"
             "> *Samsara Temp:* `{samsara_temp}°`\n"
             "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`"
+            "> *Captured At:* `{samsara_temp_time}`\n"
+            "> *Note:* `{remarks}`"
         ), process_message_generic),
         "ℹ️ Dry Load": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
