@@ -32,10 +32,11 @@ class TempSensorMapping(SQLModel, table=True):
     
     @classmethod
     def get_by_sensor_name(cls, sensor_name: str) -> Optional["TempSensorMapping"]:
-        """Get a temp sensor mapping by TempSensorNAME"""
+        """Get a temp sensor mapping by TempSensorNAME (case-insensitive)"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).where(cls.TempSensorNAME == sensor_name)
+                from sqlalchemy import func
+                statement = select(cls).where(func.upper(cls.TempSensorNAME) == func.upper(sensor_name))
                 return session.exec(statement).first()
                 
             except Exception as err:
@@ -72,10 +73,11 @@ class TempSensorMapping(SQLModel, table=True):
     
     @classmethod
     def update(cls, sensor_name: str, sensor_id: Optional[int] = None) -> Optional["TempSensorMapping"]:
-        """Update an existing temp sensor mapping"""
+        """Update an existing temp sensor mapping (case-insensitive search)"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).where(cls.TempSensorNAME == sensor_name)
+                from sqlalchemy import func
+                statement = select(cls).where(func.upper(cls.TempSensorNAME) == func.upper(sensor_name))
                 mapping = session.exec(statement).first()
                 
                 if mapping:
@@ -141,10 +143,11 @@ class TempSensorMapping(SQLModel, table=True):
 
     @classmethod
     def delete(cls, sensor_name: str) -> bool:
-        """Delete a temp sensor mapping"""
+        """Delete a temp sensor mapping (case-insensitive search)"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).where(cls.TempSensorNAME == sensor_name)
+                from sqlalchemy import func
+                statement = select(cls).where(func.upper(cls.TempSensorNAME) == func.upper(sensor_name))
                 mapping = session.exec(statement).first()
                 
                 if mapping:
