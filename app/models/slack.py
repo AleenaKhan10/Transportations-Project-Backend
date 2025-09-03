@@ -132,13 +132,13 @@ class Payload(BaseModel):
         else:
             endpoint = "/chat.postMessage"
         
-        payload = self.model_dump_json(exclude_none=True)
+        payload = self.model_dump(exclude_none=True, mode="json")
         headers = {
             "Authorization": f"Bearer {settings.SLACK_BOT_TOKEN}",
             "Content-Type": "application/json; charset=utf-8",
         }
         response = requests.post(
-            f"https://slack.com/api{endpoint}", data=payload, headers=headers
+            f"https://slack.com/api{endpoint}", json=payload, headers=headers
         )
         return {
             "message": response.text,
