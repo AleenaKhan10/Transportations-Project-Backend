@@ -36,6 +36,7 @@ INTERVAL_UNIT = BQTimeUnit.HOUR
 CHICAGO_TZ = pytz.timezone("America/Chicago")
 HUMAN_DATETIME_FORMAT = "%b %d, %Y at %I:%M %p %Z"
 
+MAX_BLOCKS_PER_MESSAGE = 50
 
 # ------ Alert Templates ------
 
@@ -220,10 +221,11 @@ def send_slack_temp_alerts():
 
 
 def send_muted_entities(channel: str, user_id: str = None):
+    """Send muted entities across multiple messages if needed."""
     channel = channel if channel.startswith("#") else f"#{channel}"
     muted_entities = get_excluded_alert_filters()
+    
     if not muted_entities:
-        # Send message indicating no muted entities
         return send_empty_payload(
             "📋 Muted Alerts List",
             "✅ *No alerts are currently muted.*",
@@ -236,42 +238,52 @@ def send_muted_entities(channel: str, user_id: str = None):
     for filter in muted_entities:
         idtype_values_map[filter.id_type.value].append(filter.entity_id)
 
-    # Create blocks for the Slack message
-    blocks = [
+    # Send header message
+    header_blocks = [
         HeaderBlock(text=PlainText(text="📋 Muted Alerts List", emoji=True)),
         ContextBlock(elements=[MDText(text=f"*Total muted entities:* {len(muted_entities)}")]),
+        get_generated_at()
     ]
+    
+    Payload(
+        channel=channel,
+        blocks=header_blocks,
+        text="Muted Alerts List - Header",
+        user=user_id,
+    ).post()
 
-    # Process each ID type and its entities
+    # Send each ID type in separate messages
     for id_type, entity_ids in idtype_values_map.items():
-        # Add section header for this ID type
-        blocks.append(
+        message_blocks = [
             SectionBlock(
                 text=MDText(text=f"*🔇 Muted {id_type.title()}s ({len(entity_ids)}):*")
             )
-        )
+        ]
         
-        # Add each entity with its unmute button
+        # Add entities, checking block limit
         for entity_id in entity_ids:
-            # Create a section with the entity ID and unmute button
-            blocks.append(get_unmute_section(entity_id, channel))
+            if len(message_blocks) >= MAX_BLOCKS_PER_MESSAGE - 1:  # -1 for safety
+                # Send current batch
+                Payload(
+                    channel=channel,
+                    blocks=message_blocks,
+                    text=f"Muted {id_type.title()}s (Batch)",
+                    user=user_id,
+                ).post()
+                
+                # Start new batch
+                message_blocks = []
+            
+            message_blocks.append(get_unmute_section(entity_id, channel))
         
-        # Add divider between different ID types
-        blocks.append(DividerBlock())
-    
-    # Remove the last divider for cleaner appearance
-    if isinstance(blocks[-1], DividerBlock):
-        blocks.pop()
-    
-    # Add timestamp
-    blocks.append(get_generated_at())
-
-    return Payload(
-        channel=channel,
-        blocks=blocks,
-        text="Muted Alerts List",
-        user=user_id,
-    ).post()
+        # Send remaining entities for this ID type
+        if message_blocks:
+            Payload(
+                channel=channel,
+                blocks=message_blocks,
+                text=f"Muted {id_type.title()}s",
+                user=user_id,
+            ).post()
 
 
 def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel: str, user_id: str = None):
