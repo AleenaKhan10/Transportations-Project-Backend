@@ -1,5 +1,5 @@
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 import requests
 
@@ -110,10 +110,12 @@ class Payload(BaseModel):
         DividerBlock | SectionBlock | HeaderBlock | ContextBlock | ActionsBlock
     ]
     text: str
-    user: str | None = None
+    user: str | None = Field(default=None)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "use_enum_values": True,
+    }
 
     def post(self) -> dict[str, str | int]:
         """
@@ -127,15 +129,13 @@ class Payload(BaseModel):
         """
         if self.user:
             endpoint = "/chat.postEphemeral"
-            content_type = "application/json; charset=utf-8"
         else:
             endpoint = "/chat.postMessage"
-            content_type = "application/json"
         
         payload = self.model_dump_json(exclude_none=True)
         headers = {
             "Authorization": f"Bearer {settings.SLACK_BOT_TOKEN}",
-            "Content-Type": content_type,
+            "Content-Type": "application/json; charset=utf-8",
         }
         response = requests.post(
             f"https://slack.com/api{endpoint}", data=payload, headers=headers
@@ -144,4 +144,3 @@ class Payload(BaseModel):
             "message": response.text,
             "slack_status": response.status_code,
         }
-
