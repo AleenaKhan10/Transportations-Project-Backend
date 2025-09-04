@@ -219,13 +219,30 @@ def send_slack_temp_alerts():
 
     return response
 
+def trips_within_24hours():
+
+    query = """
+    SELECT
+    DISTINCT trip_id
+    FROM
+    `agy-intelligence-hub.diamond.get_master_grouped_subtrip_level`(100, 'DAY', FALSE)
+    WHERE
+    trip_end_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 24 HOUR)"""
+
+    df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
+
+    return df['trip_id'].tolist()
 
 def send_muted_entities(channel: str, user_id: str = None):
     """Send muted entities across multiple messages if needed."""
     channel = channel if channel.startswith("#") else f"#{channel}"
     muted_entities = get_excluded_alert_filters()
-    
-    if not muted_entities:
+
+    one_day_trip_ids = trips_within_24hours()
+
+    common_filters = [f for f in muted_entities if f.entity_id in one_day_trip_ids]
+
+    if not common_filters:
         return send_empty_payload(
             "📋 Muted Alerts List",
             "✅ *No alerts are currently muted.*",
@@ -235,13 +252,13 @@ def send_muted_entities(channel: str, user_id: str = None):
 
     # Create a map of idtype names to entity IDs
     idtype_values_map: dict[str, list[str]] = defaultdict(list)
-    for filter in muted_entities:
+    for filter in common_filters:
         idtype_values_map[filter.id_type.value].append(filter.entity_id)
 
     # Send header message
     header_blocks = [
         HeaderBlock(text=PlainText(text="📋 Muted Alerts List", emoji=True)),
-        ContextBlock(elements=[MDText(text=f"*Total muted entities:* {len(muted_entities)}")]),
+        ContextBlock(elements=[MDText(text=f"*Total muted entities:* {len(common_filters)}")]),
         get_generated_at()
     ]
     
@@ -284,6 +301,8 @@ def send_muted_entities(channel: str, user_id: str = None):
                 text=f"Muted {id_type.title()}s",
                 user=user_id,
             ).post()
+
+    return {"message": f"Sent muted entities to {channel}", "slack_status": 200}
 
 
 def toggle_entity_alert_and_notify(entity_id: str, mute_type: MuteEnum, channel: str, user_id: str = None):
