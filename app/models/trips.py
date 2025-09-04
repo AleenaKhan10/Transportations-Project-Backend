@@ -201,6 +201,61 @@ class Trip(SQLModel, table=True):
             except Exception as err:
                 logger.error(f'Database delete error: {err}', exc_info=True)
                 return False
+    
+    @classmethod
+    def truncate_table(cls) -> dict:
+        """Truncate the trips table (delete all records)"""
+        with cls.get_session() as session:
+            try:
+                # Count records before truncation
+                count_before = session.exec(select(cls)).all()
+                count_before = len(count_before)
+                
+                logger.info(f'Truncating trips table with {count_before} records')
+                
+                # Use TRUNCATE for better performance (resets identity columns)
+                # TRUNCATE is faster than DELETE for removing all rows
+                session.execute(text('TRUNCATE TABLE trips RESTART IDENTITY CASCADE'))
+                session.commit()
+                
+                logger.info(f'Successfully truncated trips table. Deleted {count_before} records')
+                
+                return {
+                    "success": True,
+                    "message": f"Successfully truncated trips table",
+                    "deleted_count": count_before
+                }
+                
+            except Exception as err:
+                logger.error(f'Database truncate error: {err}', exc_info=True)
+                session.rollback()
+                
+                # Fallback to DELETE if TRUNCATE fails (e.g., due to foreign key constraints)
+                try:
+                    logger.info('TRUNCATE failed, attempting DELETE fallback')
+                    deleted = session.exec(select(cls)).all()
+                    count = len(deleted)
+                    
+                    for trip in deleted:
+                        session.delete(trip)
+                    
+                    session.commit()
+                    logger.info(f'Successfully deleted all {count} records using DELETE')
+                    
+                    return {
+                        "success": True,
+                        "message": f"Successfully deleted all trips (using DELETE)",
+                        "deleted_count": count
+                    }
+                    
+                except Exception as delete_err:
+                    logger.error(f'Database delete fallback error: {delete_err}', exc_info=True)
+                    session.rollback()
+                    return {
+                        "success": False,
+                        "message": f"Failed to truncate table: {str(delete_err)}",
+                        "deleted_count": 0
+                    }
 
 
 class TripCreate(SQLModel):
