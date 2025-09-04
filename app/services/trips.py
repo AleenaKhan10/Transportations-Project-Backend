@@ -104,3 +104,33 @@ async def upsert_trip(trip_data: TripCreate):
         )
     
     return trip
+
+
+@router.delete("/truncate")
+async def truncate_trips_table():
+    """
+    DANGER: Truncate the trips table (delete ALL records)
+    This will permanently delete all trip data from the database.
+    Use with extreme caution - this action cannot be undone.
+    """
+    from datetime import datetime
+    
+    logger.warning("⚠️  TRUNCATE REQUEST: About to delete ALL trips from database")
+    
+    result = Trip.truncate_table()
+    
+    if result["success"]:
+        logger.info(f"✅ Successfully truncated trips table: {result['message']}")
+        return {
+            "success": True,
+            "message": result["message"],
+            "deleted_count": result["deleted_count"],
+            "timestamp": datetime.utcnow().isoformat(),
+            "warning": "All trip data has been permanently deleted"
+        }
+    else:
+        logger.error(f"❌ Failed to truncate trips table: {result['message']}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result["message"]
+        )
