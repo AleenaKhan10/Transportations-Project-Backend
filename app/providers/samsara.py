@@ -383,3 +383,55 @@ class SamsaraAPI:
             after = pagination.get("endCursor")
 
         return pd.concat(all_stats, ignore_index=True) if all_stats else pd.DataFrame()
+
+    def get_locations(self, json_normalize = True) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+        """
+        Fetches locations from the Samsara API and returns them as a DataFrame.
+        
+        Args:
+            after: Optional cursor for pagination
+            limit: Maximum number of locations to return
+            
+        Returns:
+            tuple: (DataFrame of locations, pagination dictionary)
+        """
+        
+        data = self._make_request('GET', '/v1/fleet/assets/locations')
+        
+        if 'assets' not in data:
+            raise SamsaraAPIException(f"No locations found in the response. Response: {data}")    
+
+        df = (
+            pd.json_normalize(data["assets"])
+            if json_normalize
+            else pd.DataFrame(data["data"])
+        )
+        
+        # Explode the "location" columns if they are in `list` format
+        try:
+            df = df.explode('location')
+        except Exception:
+            pass
+        
+        return df, data.get("pagination", {})
+    
+    def get_all_locations(self, json_normalize = True) -> pd.DataFrame:
+        """
+        Fetches all locations from the Samsara API, handling pagination automatically.
+        
+        Returns:
+            pd.DataFrame: DataFrame containing all locations
+        """
+        all_locations = []
+        
+        while True:
+            df, pagination = self.get_locations(json_normalize=json_normalize)
+            
+            if not df.empty:
+                all_locations.append(df)
+            
+            if not pagination.get('hasNextPage'):
+                break
+            
+        
+        return pd.concat(all_locations, ignore_index=True) if all_locations else pd.DataFrame()
