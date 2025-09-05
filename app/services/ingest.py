@@ -14,6 +14,7 @@ from logic.ingest import (
     ingest_trailer_temp_data,
     ingest_trailer_stats_data,
     ingest_detailed_trailer_stats_data,
+    ingest_detailed_location_data,
 )
 
 
@@ -36,9 +37,10 @@ async def ingest_samsara_temp():
         return ingest_trailer_stats_data(ingested_at)
     def detailed_trailer_stats():
         return ingest_detailed_trailer_stats_data(ingested_at)
-    
+    def detailed_location():
+        return ingest_detailed_location_data(ingested_at)
     result = run_functions_in_parallel(
-        [trailer_temp, trailer_stats, detailed_trailer_stats]
+        [trailer_temp, trailer_stats, detailed_trailer_stats, detailed_location], max_workers=4
     )
     return JSONResponse(content=dict(result))
 

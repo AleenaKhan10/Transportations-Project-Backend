@@ -145,3 +145,45 @@ def ingest_detailed_trailer_stats_data(
         if_exists="append",
     )
     return "success"
+
+def ingest_detailed_location_data(ingested_at: datetime.datetime | None = None):
+    
+    ingested_at = ingested_at or datetime.datetime.now(tz=datetime.timezone.utc)
+    
+    location_df = samsara_api.get_all_locations()
+     # Clean column names
+    location_df = clean_column_names(location_df, replacements={"cable.": ""})
+
+    flattened_dfs = []
+    time_cols = []
+    col_to_flatten = 'location'
+
+    flattened = pd.json_normalize(location_df[col_to_flatten])
+    # Add a prefix to the new columns
+    flattened.columns = [f"{col_to_flatten}{sub_col.title()}" for sub_col in flattened.columns]
+    time_cols.extend([col_to_flatten for col_to_flatten in flattened.columns if 'timeMs' in col_to_flatten])
+    flattened_dfs.append(flattened)
+
+    # Concatenate the original DataFrame (without the nested columns) with the new flattened DataFrames
+    location_df = pd.concat([location_df.drop(columns=col_to_flatten)] + flattened_dfs, axis=1)
+    
+    # Fill missing timestamps with the current timestamp
+    location_df[time_cols] = location_df[time_cols].fillna(ingested_at.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    
+    # Replace NaN values with None
+    # NOTE: Do we actually need to keep the NaN values? As during the merging process in BQ the non-matching rows are anyway null!
+    location_df = location_df.replace({np.nan: None}).reset_index(drop=True)
+
+    location_df["ingestedAt"] = ingested_at
+    
+    if location_df.empty:
+        return "no_data"
+        
+    location_df["ingestedAt"] = ingested_at
+    pdg.to_gbq(
+        dataframe=location_df,
+        destination_table="bronze.samsara_detailed_locations",
+        project_id="agy-intelligence-hub",
+        if_exists="append",
+    )
+    return "success"
