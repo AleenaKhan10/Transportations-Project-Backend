@@ -14,7 +14,7 @@ router = APIRouter(prefix="/webhook", dependencies=[Depends(verify_webhook_token
 @router.get("/alerts/slack/muted")
 async def send_muted_entities_to_slack(channel: str):
     result = send_muted_entities(channel)
-    return JSONResponse(content=result, status_code=result.get("slack_status", 200))
+    return JSONResponse(content=result, status_code=200)
 
 @router.get("/alerts/{mute_type}/{entity_id}")
 async def mute_entity_alert(
