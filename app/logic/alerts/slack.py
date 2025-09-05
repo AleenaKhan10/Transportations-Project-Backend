@@ -2,6 +2,7 @@ from enum import Enum
 from datetime import datetime
 from typing import NamedTuple
 from collections import defaultdict
+from cachetools import TTLCache, cached
 
 import pytz
 import pandas as pd
@@ -37,6 +38,9 @@ CHICAGO_TZ = pytz.timezone("America/Chicago")
 HUMAN_DATETIME_FORMAT = "%b %d, %Y at %I:%M %p %Z"
 
 MAX_BLOCKS_PER_MESSAGE = 50
+
+# Cache for 12 hours
+cache = TTLCache(maxsize=100, ttl=60*60*12)
 
 # ------ Alert Templates ------
 
@@ -219,8 +223,8 @@ def send_slack_temp_alerts():
 
     return response
 
-def trips_within_24hours():
-
+@cached(cache)
+def trips_within_24hours() -> list[str]:
     query = """
     SELECT
     DISTINCT trip_id
