@@ -2,3 +2,6 @@ scheduler_config:
   - sql: create_models.reefer_anomaly_detector_v2.sql
     schedule: "0 0 * * *" # every day at 00:00 AM
     timezone: "UTC"
+  - sql: archive_last_7_days_daily.sql
+    schedule: "0 1 * * *" # every day at 00:00 AM
+    timezone: "UTC"
