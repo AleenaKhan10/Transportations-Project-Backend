@@ -27,6 +27,24 @@ async def get_driver_data_endpoint(driver_id: str):
     logger.info("getting driver's raw data")
     return Driver.get_by_id(driver_id)
 
+
+@router.get("/telegram/{telegram_id}", response_model=Driver)
+async def get_driver_by_telegram_id(telegram_id: str):
+    """
+    Get a driver by their Telegram ID
+    """
+    logger.info(f"Getting driver by telegram ID: {telegram_id}")
+    
+    driver = Driver.get_by_telegram_id(telegram_id)
+    
+    if not driver:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Driver with Telegram ID '{telegram_id}' not found"
+        )
+    
+    return driver
+
 # @router.get("/json/{driver_id}", response_model=DriverResponse)
 # async def get_driver_data_structured(driver_id: str):
 #     logger.info("getting driver's structured data")

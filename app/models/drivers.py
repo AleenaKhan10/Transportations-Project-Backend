@@ -100,6 +100,20 @@ class Driver(SQLModel, table=True):
                 return []
     
     @classmethod
+    def get_by_telegram_id(cls, telegram_id: str) -> Optional["Driver"]:
+        """Get a driver by telegram ID"""
+        logger.info(f'Getting driver by telegram ID: {telegram_id}')
+        
+        with cls.get_session() as session:
+            try:
+                statement = select(cls).where(cls.telegramId == telegram_id)
+                return session.exec(statement).first()
+                
+            except Exception as err:
+                logger.error(f'Database query error: {err}', exc_info=True)
+                return None
+    
+    @classmethod
     def upsert(cls, driver_data: "DriverCallUpdate") -> Optional["Driver"]:
         """Upsert a single driver (insert or update if exists) - only updates provided fields"""
         logger.info(f'Upserting driver with ID: {driver_data.driverId}')
