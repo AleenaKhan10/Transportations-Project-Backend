@@ -63,7 +63,7 @@ approach_to_channel = {
 # A dictionary of readable and visually appealing set of templates
 alert_templates = {
     "approach1": {
-        ""
+        
         "⚠️ Driver Setpoint Mismatch": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
             ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
