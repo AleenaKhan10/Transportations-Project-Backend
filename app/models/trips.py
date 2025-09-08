@@ -26,6 +26,7 @@ class Trip(SQLModel, table=True):
     samsaraLocation: Optional[str] = Field(max_length=500, default=None)
     liveSharingUrl: Optional[str] = None
     customerName: Optional[str] = Field(max_length=500, default=None)
+    customerGroup: Optional[str] = Field(max_length=200, default=None)
     emptyDrivingDistance: Optional[float] = None
     loadedDrivingDistance: Optional[float] = None
     shipperName: Optional[str] = Field(max_length=500, default=None)
@@ -277,6 +278,7 @@ class TripCreate(SQLModel):
     samsaraLocation: Optional[str] = Field(max_length=500, default=None)
     liveSharingUrl: Optional[str] = None
     customerName: Optional[str] = Field(max_length=500, default=None)
+    customerGroup: Optional[str] = Field(max_length=200, default=None)
     emptyDrivingDistance: Optional[float] = None
     loadedDrivingDistance: Optional[float] = None
     shipperName: Optional[str] = Field(max_length=500, default=None)
@@ -321,6 +323,7 @@ class TripUpdate(SQLModel):
     samsaraLocation: Optional[str] = Field(max_length=500, default=None)
     liveSharingUrl: Optional[str] = None
     customerName: Optional[str] = Field(max_length=500, default=None)
+    customerGroup: Optional[str] = Field(max_length=200, default=None)
     emptyDrivingDistance: Optional[float] = None
     loadedDrivingDistance: Optional[float] = None
     shipperName: Optional[str] = Field(max_length=500, default=None)
