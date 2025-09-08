@@ -1,6 +1,7 @@
 from typing import List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from helpers.time_utils import BQTimeUnit
 from logic.trips import fetch_latest_alerts
@@ -8,6 +9,11 @@ from logic.auth.security import get_current_user
 from logic.trips import get_trailer_and_trips, get_trip_data
 from models.trips import Trip, TripCreate, TripUpdate
 from helpers import logger
+
+
+class CustomerGroupUpdate(BaseModel):
+    tripId: str
+    customerGroup: str
 
 
 router = APIRouter(prefix="/trips", dependencies=[Depends(get_current_user)])
@@ -104,6 +110,40 @@ async def upsert_trip(trip_data: TripCreate):
         )
     
     return trip
+
+
+@router.post("/update-customer-group")
+async def update_customer_group(data: CustomerGroupUpdate):
+    """
+    Update only the customerGroup field for a specific trip
+    """
+    logger.info(f"Updating customerGroup for trip ID: {data.tripId}")
+    
+    # Check if trip exists
+    existing_trip = Trip.get_by_trip_id(data.tripId)
+    
+    if not existing_trip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Trip with ID '{data.tripId}' not found"
+        )
+    
+    # Update only the customerGroup field
+    updated_trip = Trip.update(trip_id=data.tripId, customerGroup=data.customerGroup)
+    
+    if not updated_trip:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update customerGroup"
+        )
+    
+    return {
+        "success": True,
+        "message": f"Successfully updated customerGroup for trip {data.tripId}",
+        "tripId": data.tripId,
+        "customerGroup": data.customerGroup,
+        "trip": updated_trip
+    }
 
 
 @router.delete("/truncate")
