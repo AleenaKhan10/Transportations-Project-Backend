@@ -25,7 +25,7 @@ def get_weather(lat: float, lon: float, aqi: bool = False) -> str:
         desc = data["current"]["condition"]["text"]
         wind = data["current"]["wind_mph"]
 
-        return f"🌤 Weather at {location}, {region} location: {temp}°C, {desc}, Winds {wind} mp/h"
+        return f"🌤 Weather at {location}, {region} | {temp}°C | {desc} | Winds {wind} mp/h"
     except Exception as e:
         print(f"Weather API error: {e}")
         return "Weather data unavailable"
