@@ -29,6 +29,7 @@ from logic.alerts.filters import (
     get_excluded_alert_filters,
     filter_df_by_alert_filters,
 )
+from utils.weather_api import get_weather
 
 
 INTERVAL = 1
@@ -62,6 +63,7 @@ approach_to_channel = {
 # A dictionary of readable and visually appealing set of templates
 alert_templates = {
     "approach1": {
+        ""
         "⚠️ Driver Setpoint Mismatch": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
             ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
@@ -194,7 +196,12 @@ def send_slack_temp_alerts():
 
                 # Process each alert individually to add mute buttons
                 for _, row in _df.iterrows():
+                    if pd.notnull(row.get("latitude")) and pd.notnull(row.get("longitude")):
+                        weather_info = get_weather(row["latitude"], row["longitude"])
+                    else:
+                        weather_info = "Weather data unavailable"
                     alert_message = message_processor(template.format(**row))
+                    alert_message += f"\n> *Weather:* {weather_info}" # append weather line
                     blocks.append(SectionBlock(text=MDText(text=alert_message)))
                     
                     # Add mute/unmute buttons for each alert (using both trip_id and trailer_id)
