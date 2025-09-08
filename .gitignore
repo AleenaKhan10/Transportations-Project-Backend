@@ -27,6 +27,7 @@ last_reply
 last_reply.json
 test/
 test.py
+test.ipynb
 
 # Logs
 *.log

@@ -140,7 +140,7 @@ ranked AS (
 filtered AS (
   SELECT * except (rn)
   FROM ranked
-  WHERE CASE WHEN only_latest THEN rn = 1 ELSE TRUE END
+  WHERE CASE WHEN TRUE THEN rn = 1 ELSE TRUE END
 ),
 
 classified AS (
@@ -149,7 +149,11 @@ classified AS (
     trip_id, 
     leg_id, 
     driver_id, 
-    truck_id, 
+    truck_id,
+    location_name,
+    latitude,
+    longitude,
+    location_time,
     status, 
     status_id, 
     priority, 

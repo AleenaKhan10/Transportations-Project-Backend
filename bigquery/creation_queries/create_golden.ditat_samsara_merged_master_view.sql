@@ -124,6 +124,10 @@ ditat_events_with_trip_starts AS (
 samsara_events AS (
   SELECT
     trailerName AS trailer_id,
+    locationName AS location_name,
+    latitude,
+    longitude,
+    locationTime AS location_time,
     actualReeferMode AS samsara_reefer_mode,
     actualReeferModeTime AS samsara_reefer_mode_time,
     driverSetPointInF AS samsara_driver_set_point,
@@ -161,6 +165,10 @@ unioned_events AS (
     temp_updated_on AS ditat_temp_time,
     is_new_trip_start,
     temp_updated_on AS time_axis, -- Use Ditat's timestamp for the master timeline.
+    CAST(NULL AS STRING) AS location_name,
+    CAST(NULL AS FLOAT64) AS latitude,
+    CAST(NULL AS FLOAT64) AS longitude,
+    CAST(NULL AS TIMESTAMP) AS location_time,
     CAST(NULL AS STRING) AS samsara_reefer_mode,
     CAST(NULL AS TIMESTAMP) AS samsara_reefer_mode_time,
     CAST(NULL AS FLOAT64) AS samsara_driver_set_point,
@@ -200,6 +208,10 @@ unioned_events AS (
     CAST(NULL AS TIMESTAMP) AS ditat_temp_time,
     0 AS is_new_trip_start, -- A Samsara event cannot be the start of a trip as this information comes from Ditat.
     time_axis, -- Use Samsara's timestamp for the master timeline.
+    location_name,
+    latitude,
+    longitude,
+    location_time,
     samsara_reefer_mode,
     samsara_reefer_mode_time,
     samsara_driver_set_point,
@@ -228,6 +240,10 @@ final_enriched_timeline AS (
     LAST_VALUE(leg_id IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS leg_id,
     LAST_VALUE(driver_id IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS driver_id,
     LAST_VALUE(truck_id IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS truck_id,
+    LAST_VALUE(location_name IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS location_name,
+    LAST_VALUE(latitude IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS latitude,
+    LAST_VALUE(longitude IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS longitude,
+    location_time,
     LAST_VALUE(status_id IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS status_id,
     LAST_VALUE(status IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS status,
     LAST_VALUE(priority_id IGNORE NULLS) OVER (PARTITION BY trailer_id ORDER BY time_axis) AS priority_id,
