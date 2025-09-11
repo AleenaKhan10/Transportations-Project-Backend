@@ -583,11 +583,11 @@ class DispatchedTrip(SQLModel, table=True):
                 return []
 
     @classmethod
-    def get_by_id(cls, record_id: int) -> Optional["DispatchedTrip"]:
-        """Get a dispatched trip by ID"""
+    def get_by_id(cls, trip_id: str) -> Optional["DispatchedTrip"]:
+        """Get a dispatched trip by trip_id"""
         with cls.get_session() as session:
             try:
-                statement = select(cls).where(cls.id == record_id)
+                statement = select(cls).where(cls.trip_id == trip_id)
                 return session.exec(statement).first()
                 
             except Exception as err:
@@ -613,13 +613,13 @@ class DispatchedTrip(SQLModel, table=True):
                 return None
 
     @classmethod
-    def update(cls, record_id: int, record_data: "DispatchedTripUpdate") -> Optional["DispatchedTrip"]:
+    def update(cls, trip_id: str, record_data: "DispatchedTripUpdate") -> Optional["DispatchedTrip"]:
         """Update a dispatched trip"""
-        logger.info(f'Updating dispatched trip with ID: {record_id}')
+        logger.info(f'Updating dispatched trip with trip_id: {trip_id}')
         
         with cls.get_session() as session:
             try:
-                record = session.exec(select(cls).where(cls.id == record_id)).first()
+                record = session.exec(select(cls).where(cls.trip_id == trip_id)).first()
                 if not record:
                     return None
                 
@@ -638,13 +638,13 @@ class DispatchedTrip(SQLModel, table=True):
                 return None
 
     @classmethod
-    def delete(cls, record_id: int) -> bool:
+    def delete(cls, trip_id: str) -> bool:
         """Delete a dispatched trip"""
-        logger.info(f'Deleting dispatched trip with ID: {record_id}')
+        logger.info(f'Deleting dispatched trip with trip_id: {trip_id}')
         
         with cls.get_session() as session:
             try:
-                record = session.exec(select(cls).where(cls.id == record_id)).first()
+                record = session.exec(select(cls).where(cls.trip_id == trip_id)).first()
                 if not record:
                     return False
                 
