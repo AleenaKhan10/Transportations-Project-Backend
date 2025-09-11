@@ -31,18 +31,18 @@ async def get_all_dispatched_trips(
     return DispatchedTrip.get_all(limit=limit, sort_by=sort_by, sort_order=sort_order)
 
 @router.get("/{trip_id}", response_model=DispatchedTrip)
-async def get_dispatched_trip_by_id(trip_id: int):
+async def get_dispatched_trip_by_id(trip_id: str):
     """
-    Get a specific dispatched trip by ID
+    Get a specific dispatched trip by trip_id
     """
-    logger.info(f"Getting dispatched trip by ID: {trip_id}")
+    logger.info(f"Getting dispatched trip by trip_id: {trip_id}")
     
     record = DispatchedTrip.get_by_id(trip_id)
     
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dispatched trip with ID '{trip_id}' not found"
+            detail=f"Dispatched trip with trip_id '{trip_id}' not found"
         )
     
     return record
@@ -65,40 +65,40 @@ async def create_dispatched_trip(record_data: DispatchedTripCreate):
     return record
 
 @router.put("/{trip_id}", response_model=DispatchedTrip)
-async def update_dispatched_trip(trip_id: int, record_data: DispatchedTripUpdate):
+async def update_dispatched_trip(trip_id: str, record_data: DispatchedTripUpdate):
     """
     Update an existing dispatched trip
     """
-    logger.info(f"Updating dispatched trip with ID: {trip_id}")
+    logger.info(f"Updating dispatched trip with trip_id: {trip_id}")
     
     record = DispatchedTrip.update(trip_id, record_data)
     
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dispatched trip with ID '{trip_id}' not found"
+            detail=f"Dispatched trip with trip_id '{trip_id}' not found"
         )
     
     return record
 
 @router.delete("/{trip_id}")
-async def delete_dispatched_trip(trip_id: int):
+async def delete_dispatched_trip(trip_id: str):
     """
     Delete a dispatched trip
     """
-    logger.info(f"Deleting dispatched trip with ID: {trip_id}")
+    logger.info(f"Deleting dispatched trip with trip_id: {trip_id}")
     
     success = DispatchedTrip.delete(trip_id)
     
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Dispatched trip with ID '{trip_id}' not found"
+            detail=f"Dispatched trip with trip_id '{trip_id}' not found"
         )
     
     return JSONResponse(
         status_code=200, 
-        content={"message": f"Dispatched trip with ID '{trip_id}' deleted successfully"}
+        content={"message": f"Dispatched trip with trip_id '{trip_id}' deleted successfully"}
     )
 
 @router.post("/upsert", response_model=DispatchedTrip)
