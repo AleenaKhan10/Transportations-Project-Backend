@@ -398,6 +398,43 @@ class ViolationAlert(SQLModel, table=True):
                 return None
 
     @classmethod
+    def get_by_created_at(cls, created_at_date: str, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ViolationAlert"]:
+        """Get violation alerts by created_at date (YYYY-MM-DD format)"""
+        logger.info(f'Getting violation alerts by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}')
+        
+        with cls.get_session() as session:
+            try:
+                # Parse the date string
+                from datetime import datetime
+                target_date = datetime.strptime(created_at_date, "%Y-%m-%d").date()
+                
+                # Validate sort_by field
+                valid_sort_fields = {
+                    'id', 'load_id', 'vehicle_id', 'violation_time', 'distance_traveled_miles',
+                    'current_odometer_miles', 'stop_duration_minutes', 'current_speed', 'created_at'
+                }
+                if sort_by not in valid_sort_fields:
+                    sort_by = "created_at"
+                
+                # Build query with date filter (match date part only)
+                statement = select(cls).where(text("DATE(created_at) = :target_date")).params(target_date=target_date)
+                
+                if sort_order.lower() == "asc":
+                    statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
+                else:
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
+                
+                records = session.exec(statement).all()
+                return list(records)
+                
+            except ValueError as ve:
+                logger.error(f'Invalid date format: {ve}', exc_info=True)
+                return []
+            except Exception as err:
+                logger.error(f'Database query error: {err}', exc_info=True)
+                return []
+
+    @classmethod
     def create(cls, record_data: "ViolationAlertCreate") -> Optional["ViolationAlert"]:
         """Create a new violation alert"""
         logger.info('Creating violation alert record')

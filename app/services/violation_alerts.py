@@ -30,6 +30,27 @@ async def get_all_violation_alerts(
     logger.info(f"Getting all violation alerts with limit: {limit}, sort: {sort_by} {sort_order}")
     return ViolationAlert.get_all(limit=limit, sort_by=sort_by, sort_order=sort_order)
 
+@router.get("/by-date/{created_at_date}", response_model=List[ViolationAlert])
+async def get_violation_alerts_by_created_at(
+    created_at_date: str,
+    limit: int = Query(default=5000, ge=1, le=10000),
+    sort_by: str = Query(default="created_at", description="Field to sort by"),
+    sort_order: str = Query(default="desc", regex="^(asc|desc)$", description="Sort order: asc or desc")
+):
+    """
+    Get violation alerts by created_at date (YYYY-MM-DD format)
+    """
+    logger.info(f"Getting violation alerts by created_at date: {created_at_date}")
+    
+    records = ViolationAlert.get_by_created_at(
+        created_at_date=created_at_date,
+        limit=limit,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
+    
+    return records
+
 @router.get("/{alert_id}", response_model=ViolationAlert)
 async def get_violation_alert_by_id(alert_id: int):
     """
