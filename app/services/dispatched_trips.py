@@ -101,6 +101,26 @@ async def delete_dispatched_trip(trip_id: str):
         content={"message": f"Dispatched trip with trip_id '{trip_id}' deleted successfully"}
     )
 
+@router.delete("/by-trip-key/{trip_key}")
+async def delete_dispatched_trip_by_trip_key(trip_key: int):
+    """
+    Delete a dispatched trip by trip_key
+    """
+    logger.info(f"Deleting dispatched trip with trip_key: {trip_key}")
+    
+    success = DispatchedTrip.delete_by_trip_key(trip_key)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Dispatched trip with trip_key '{trip_key}' not found"
+        )
+    
+    return JSONResponse(
+        status_code=200, 
+        content={"message": f"Dispatched trip with trip_key '{trip_key}' deleted successfully"}
+    )
+
 @router.post("/upsert", response_model=DispatchedTrip)
 async def upsert_dispatched_trip(record_data: DispatchedTripUpsert):
     """
