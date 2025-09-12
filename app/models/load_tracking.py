@@ -658,6 +658,26 @@ class DispatchedTrip(SQLModel, table=True):
                 return False
 
     @classmethod
+    def delete_by_trip_key(cls, trip_key: int) -> bool:
+        """Delete a dispatched trip by trip_key"""
+        logger.info(f'Deleting dispatched trip with trip_key: {trip_key}')
+        
+        with cls.get_session() as session:
+            try:
+                record = session.exec(select(cls).where(cls.trip_key == trip_key)).first()
+                if not record:
+                    return False
+                
+                session.delete(record)
+                session.commit()
+                return True
+                
+            except Exception as err:
+                logger.error(f'Database delete error: {err}', exc_info=True)
+                session.rollback()
+                return False
+
+    @classmethod
     def upsert(cls, record_data: "DispatchedTripUpsert") -> Optional["DispatchedTrip"]:
         """Upsert a dispatched trip (insert or update if exists)"""
         logger.info('Upserting dispatched trip record')
