@@ -29,6 +29,7 @@ class ActiveLoadTracking(SQLModel, table=True):
     last_known_lng: Optional[float] = Field(default=None)
     status: Optional[str] = Field(default='EnRouteToDelivery', max_length=50)
     violation_resolved: Optional[bool] = Field(default=False)
+    mute_flag: Optional[bool] = Field(default=False)
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
@@ -46,9 +47,9 @@ class ActiveLoadTracking(SQLModel, table=True):
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit', 
+                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
                     'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'created_at', 'updated_at'
+                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -87,9 +88,9 @@ class ActiveLoadTracking(SQLModel, table=True):
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit', 
+                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
                     'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'created_at', 'updated_at'
+                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -122,9 +123,9 @@ class ActiveLoadTracking(SQLModel, table=True):
                 
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit', 
+                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
                     'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'created_at', 'updated_at'
+                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -212,6 +213,60 @@ class ActiveLoadTracking(SQLModel, table=True):
                 return False
 
     @classmethod
+    def get_by_mute_flag(cls, mute_flag: bool, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ActiveLoadTracking"]:
+        """Get active load tracking records by mute_flag"""
+        logger.info(f'Getting active load tracking records by mute_flag: {mute_flag} with limit: {limit}, sort: {sort_by} {sort_order}')
+
+        with cls.get_session() as session:
+            try:
+                # Validate sort_by field
+                valid_sort_fields = {
+                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
+                    'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
+                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
+                }
+                if sort_by not in valid_sort_fields:
+                    sort_by = "created_at"
+
+                # Build query with mute_flag filter and sorting
+                statement = select(cls).where(cls.mute_flag == mute_flag)
+
+                if sort_order.lower() == "asc":
+                    statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
+                else:
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
+
+                records = session.exec(statement).all()
+                return list(records)
+
+            except Exception as err:
+                logger.error(f'Database query error: {err}', exc_info=True)
+                return []
+
+    @classmethod
+    def update_mute_flag_by_trip_id(cls, trip_id: str, mute_flag: bool) -> Optional["ActiveLoadTracking"]:
+        """Update mute_flag for an active load tracking record by trip_id"""
+        logger.info(f'Updating mute_flag to {mute_flag} for trip_id: {trip_id}')
+
+        with cls.get_session() as session:
+            try:
+                record = session.exec(select(cls).where(cls.trip_id == trip_id)).first()
+                if not record:
+                    return None
+
+                record.mute_flag = mute_flag
+                record.updated_at = datetime.utcnow()
+                session.add(record)
+                session.commit()
+                session.refresh(record)
+                return record
+
+            except Exception as err:
+                logger.error(f'Database update error: {err}', exc_info=True)
+                session.rollback()
+                return None
+
+    @classmethod
     def upsert(cls, record_data: "ActiveLoadTrackingUpsert") -> Optional["ActiveLoadTracking"]:
         """Upsert an active load tracking record (insert or update if exists)"""
         logger.info(f'Upserting active load tracking record with ID: {record_data.load_id}')
@@ -245,6 +300,7 @@ class ActiveLoadTracking(SQLModel, table=True):
                     "last_known_lng": record_data.last_known_lng,
                     "status": record_data.status,
                     "violation_resolved": record_data.violation_resolved,
+                    "mute_flag": record_data.mute_flag,
                     "updated_at": datetime.utcnow()
                 }
                 
@@ -295,6 +351,7 @@ class ActiveLoadTrackingCreate(BaseModel):
     last_known_lng: Optional[float] = None
     status: Optional[str] = 'EnRouteToDelivery'
     violation_resolved: Optional[bool] = False
+    mute_flag: Optional[bool] = False
 
 
 class ActiveLoadTrackingUpdate(BaseModel):
@@ -314,6 +371,7 @@ class ActiveLoadTrackingUpdate(BaseModel):
     last_known_lng: Optional[float] = None
     status: Optional[str] = None
     violation_resolved: Optional[bool] = None
+    mute_flag: Optional[bool] = None
 
 
 class ActiveLoadTrackingUpsert(BaseModel):
@@ -334,6 +392,7 @@ class ActiveLoadTrackingUpsert(BaseModel):
     last_known_lng: Optional[float] = None
     status: Optional[str] = None
     violation_resolved: Optional[bool] = None
+    mute_flag: Optional[bool] = None
 
 
 class ViolationAlert(SQLModel, table=True):
@@ -814,3 +873,8 @@ class DispatchedTripUpsert(BaseModel):
     derivedtrailerkey: Optional[int] = None
     derivedtruckkey: Optional[int] = None
     dispatchedby: Optional[int] = None
+
+
+class MuteFlagUpdateRequest(BaseModel):
+    mute: bool
+    tripId: str
