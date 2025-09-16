@@ -6,10 +6,11 @@ from fastapi.responses import JSONResponse
 from helpers import logger
 from logic.auth.security import get_current_user
 from models.load_tracking import (
-    ActiveLoadTracking, 
-    ActiveLoadTrackingCreate, 
-    ActiveLoadTrackingUpdate, 
-    ActiveLoadTrackingUpsert
+    ActiveLoadTracking,
+    ActiveLoadTrackingCreate,
+    ActiveLoadTrackingUpdate,
+    ActiveLoadTrackingUpsert,
+    MuteFlagUpdateRequest
 )
 
 router = APIRouter(
@@ -161,3 +162,33 @@ async def get_active_load_tracking_by_created_at(
     
     records = ActiveLoadTracking.get_by_created_at(created_at_date=created_at_date, limit=limit, sort_by=sort_by, sort_order=sort_order)
     return records
+
+@router.patch("/mute-flag", response_model=ActiveLoadTracking)
+async def update_mute_flag(request_data: MuteFlagUpdateRequest):
+    """
+    Update mute_flag for an active load tracking record by trip_id
+    """
+    logger.info(f"Updating mute_flag to {request_data.mute} for trip_id: {request_data.tripId}")
+
+    record = ActiveLoadTracking.update_mute_flag_by_trip_id(request_data.tripId, request_data.mute)
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Active load tracking record with trip_id '{request_data.tripId}' not found"
+        )
+
+    return record
+
+@router.get("/mute-flag/{mute_flag}", response_model=List[ActiveLoadTracking])
+async def get_active_load_tracking_by_mute_flag(
+    mute_flag: bool,
+    limit: int = Query(default=5000, ge=1, le=10000),
+    sort_by: str = Query(default="created_at", description="Field to sort by"),
+    sort_order: str = Query(default="desc", regex="^(asc|desc)$", description="Sort order: asc or desc")
+):
+    """
+    Get active load tracking records by mute_flag with optional sorting
+    """
+    logger.info(f"Getting active load tracking records by mute_flag: {mute_flag} with limit: {limit}, sort: {sort_by} {sort_order}")
+    return ActiveLoadTracking.get_by_mute_flag(mute_flag=mute_flag, limit=limit, sort_by=sort_by, sort_order=sort_order)
