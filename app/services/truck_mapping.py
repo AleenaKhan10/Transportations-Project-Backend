@@ -47,15 +47,32 @@ async def get_truck_mapping_by_id(truck_id: int):
     """
     logger.info(f"Getting truck mapping for truck ID: {truck_id}")
     mappings = TruckMapping.get_by_truck_id(truck_id)
-    
+
     if not mappings:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Truck mapping with truck ID '{truck_id}' not found"
         )
-    
+
     # Return the first mapping found
     return mappings[0]
+
+
+@router.get("/key/{truck_key}", response_model=TruckMapping)
+async def get_truck_mapping_by_key(truck_key: str):
+    """
+    Get truck mapping by TruckKey (returns first match)
+    """
+    logger.info(f"Getting truck mapping for truck key: {truck_key}")
+    mapping = TruckMapping.get_by_truck_key(truck_key)
+
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Truck mapping with truck key '{truck_key}' not found"
+        )
+
+    return mapping
 
 
 @router.post("/upsert", response_model=TruckMapping)

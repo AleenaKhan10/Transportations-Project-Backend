@@ -51,10 +51,22 @@ class TruckMapping(SQLModel, table=True):
                 statement = select(cls).where(cls.TruckId == truck_id)
                 mappings = session.exec(statement).all()
                 return list(mappings)
-                
+
             except Exception as err:
                 logger.error(f'Database query error: {err}', exc_info=True)
                 return []
+
+    @classmethod
+    def get_by_truck_key(cls, truck_key: str) -> Optional["TruckMapping"]:
+        """Get truck mapping by TruckKey (returns first match)"""
+        with cls.get_session() as session:
+            try:
+                statement = select(cls).where(cls.TruckKey == truck_key)
+                return session.exec(statement).first()
+
+            except Exception as err:
+                logger.error(f'Database query error: {err}', exc_info=True)
+                return None
     
     @classmethod
     def create(cls, truck_unit: str, truck_id: Optional[int] = None, truck_key: Optional[str] = None) -> Optional["TruckMapping"]:
