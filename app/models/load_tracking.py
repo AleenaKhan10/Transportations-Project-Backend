@@ -18,20 +18,20 @@ class ActiveLoadTracking(SQLModel, table=True):
     driver_name: Optional[str] = Field(default=None, max_length=50)
     driver_phone_number: Optional[str] = Field(default=None, max_length=50)
     truck_unit: Optional[int] = Field(default=None)
-    start_time: Optional[datetime] = Field(default=None)
+    start_time: Optional[str] = Field(default=None, max_length=50)
     start_odometer_miles: Optional[int] = Field(default=None)
     current_odometer_miles: Optional[int] = Field(default=None)
     miles_threshold: Optional[int] = Field(default=250)
-    current_stop_start: Optional[datetime] = Field(default=None)
+    current_stop_start: Optional[str] = Field(default=None, max_length=50)
     total_distance_traveled: Optional[Decimal] = Field(default=Decimal('0'), max_digits=10, decimal_places=2)
-    last_alert_sent: Optional[datetime] = Field(default=None)
+    last_alert_sent: Optional[str] = Field(default=None, max_length=50)
     last_known_lat: Optional[float] = Field(default=None)
     last_known_lng: Optional[float] = Field(default=None)
     status: Optional[str] = Field(default='EnRouteToDelivery', max_length=50)
     violation_resolved: Optional[bool] = Field(default=False)
     mute_flag: Optional[bool] = Field(default=False)
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    created_at: Optional[str] = Field(default=None, max_length=50)
+    updated_at: Optional[str] = Field(default=None, max_length=50)
 
     @classmethod
     def get_session(cls) -> Session:
@@ -117,10 +117,6 @@ class ActiveLoadTracking(SQLModel, table=True):
         
         with cls.get_session() as session:
             try:
-                # Parse the date string
-                from datetime import datetime
-                target_date = datetime.strptime(created_at_date, "%Y-%m-%d").date()
-                
                 # Validate sort_by field
                 valid_sort_fields = {
                     'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
@@ -129,9 +125,11 @@ class ActiveLoadTracking(SQLModel, table=True):
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
-                
+
                 # Build query with date filter (match date part only)
-                statement = select(cls).where(text("DATE(created_at) = :target_date")).params(target_date=target_date)
+                # Since created_at is now a string in format 'YYYY-MM-DD HH:MM:SS', we use LIKE to match the date part
+                date_pattern = f"{created_at_date}%"
+                statement = select(cls).where(cls.created_at.like(date_pattern))
                 
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
@@ -152,15 +150,24 @@ class ActiveLoadTracking(SQLModel, table=True):
     def create(cls, record_data: "ActiveLoadTrackingCreate") -> Optional["ActiveLoadTracking"]:
         """Create a new active load tracking record"""
         logger.info(f'Creating active load tracking record with ID: {record_data.load_id}')
-        
+
         with cls.get_session() as session:
             try:
-                record = cls(**record_data.model_dump(exclude_unset=True))
+                # Convert to dict and set timestamps if not provided
+                record_dict = record_data.model_dump(exclude_unset=True)
+                current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+                if 'created_at' not in record_dict or record_dict['created_at'] is None:
+                    record_dict['created_at'] = current_time
+                if 'updated_at' not in record_dict or record_dict['updated_at'] is None:
+                    record_dict['updated_at'] = current_time
+
+                record = cls(**record_dict)
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
                 logger.error(f'Database create error: {err}', exc_info=True)
                 session.rollback()
@@ -181,7 +188,7 @@ class ActiveLoadTracking(SQLModel, table=True):
                 for field, value in update_data.items():
                     setattr(record, field, value)
                 
-                record.updated_at = datetime.utcnow()
+                record.updated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 session.add(record)
                 session.commit()
                 session.refresh(record)
@@ -255,7 +262,7 @@ class ActiveLoadTracking(SQLModel, table=True):
                     return None
 
                 record.mute_flag = mute_flag
-                record.updated_at = datetime.utcnow()
+                record.updated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 session.add(record)
                 session.commit()
                 session.refresh(record)
@@ -283,6 +290,7 @@ class ActiveLoadTracking(SQLModel, table=True):
                 provided_values["load_id"] = record_data.load_id
                 
                 # Check each field and only include if it's not None
+                current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 field_mappings = {
                     "trip_id": record_data.trip_id,
                     "vehicle_id": record_data.vehicle_id,
@@ -301,7 +309,8 @@ class ActiveLoadTracking(SQLModel, table=True):
                     "status": record_data.status,
                     "violation_resolved": record_data.violation_resolved,
                     "mute_flag": record_data.mute_flag,
-                    "updated_at": datetime.utcnow()
+                    "created_at": current_time,  # Always set for new records
+                    "updated_at": current_time
                 }
                 
                 for field_name, field_value in field_mappings.items():
@@ -340,13 +349,13 @@ class ActiveLoadTrackingCreate(BaseModel):
     driver_name: Optional[str] = None
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
-    start_time: Optional[datetime] = None
+    start_time: Optional[str] = None
     start_odometer_miles: Optional[int] = None
     current_odometer_miles: Optional[int] = None
     miles_threshold: Optional[int] = 250
-    current_stop_start: Optional[datetime] = None
+    current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = Decimal('0')
-    last_alert_sent: Optional[datetime] = None
+    last_alert_sent: Optional[str] = None
     last_known_lat: Optional[float] = None
     last_known_lng: Optional[float] = None
     status: Optional[str] = 'EnRouteToDelivery'
@@ -360,13 +369,13 @@ class ActiveLoadTrackingUpdate(BaseModel):
     driver_name: Optional[str] = None
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
-    start_time: Optional[datetime] = None
+    start_time: Optional[str] = None
     start_odometer_miles: Optional[int] = None
     current_odometer_miles: Optional[int] = None
     miles_threshold: Optional[int] = None
-    current_stop_start: Optional[datetime] = None
+    current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = None
-    last_alert_sent: Optional[datetime] = None
+    last_alert_sent: Optional[str] = None
     last_known_lat: Optional[float] = None
     last_known_lng: Optional[float] = None
     status: Optional[str] = None
@@ -381,13 +390,13 @@ class ActiveLoadTrackingUpsert(BaseModel):
     driver_name: Optional[str] = None
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
-    start_time: Optional[datetime] = None
+    start_time: Optional[str] = None
     start_odometer_miles: Optional[int] = None
     current_odometer_miles: Optional[int] = None
     miles_threshold: Optional[int] = None
-    current_stop_start: Optional[datetime] = None
+    current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = None
-    last_alert_sent: Optional[datetime] = None
+    last_alert_sent: Optional[str] = None
     last_known_lat: Optional[float] = None
     last_known_lng: Optional[float] = None
     status: Optional[str] = None
@@ -401,7 +410,7 @@ class ViolationAlert(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     load_id: Optional[str] = Field(default=None, max_length=50)
     vehicle_id: Optional[str] = Field(default=None, max_length=50)
-    violation_time: Optional[datetime] = Field(default=None)
+    violation_time: Optional[str] = Field(default=None, max_length=50)
     location_lat: Optional[float] = Field(default=None)
     location_lng: Optional[float] = Field(default=None)
     distance_traveled_miles: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
@@ -409,7 +418,7 @@ class ViolationAlert(SQLModel, table=True):
     stop_duration_minutes: Optional[int] = Field(default=None)
     current_speed: Optional[Decimal] = Field(default=None, max_digits=5, decimal_places=2)
     alert_sent_to_slack: Optional[bool] = Field(default=True)
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    created_at: Optional[str] = Field(default=None, max_length=50)
 
     @classmethod
     def get_session(cls) -> Session:
@@ -595,7 +604,7 @@ class ViolationAlert(SQLModel, table=True):
 class ViolationAlertCreate(BaseModel):
     load_id: Optional[str] = None
     vehicle_id: Optional[str] = None
-    violation_time: Optional[datetime] = None
+    violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
@@ -608,7 +617,7 @@ class ViolationAlertCreate(BaseModel):
 class ViolationAlertUpdate(BaseModel):
     load_id: Optional[str] = None
     vehicle_id: Optional[str] = None
-    violation_time: Optional[datetime] = None
+    violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
@@ -622,7 +631,7 @@ class ViolationAlertUpsert(BaseModel):
     id: Optional[int] = None
     load_id: Optional[str] = None
     vehicle_id: Optional[str] = None
-    violation_time: Optional[datetime] = None
+    violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
@@ -639,7 +648,7 @@ class DispatchedTrip(SQLModel, table=True):
     trip_key: Optional[int] = Field(default=None, unique=True)
     trip_id: Optional[str] = Field(default=None, max_length=50)
     created_by: Optional[int] = Field(default=None)
-    created_on: Optional[datetime] = Field(default=None)
+    created_on: Optional[str] = Field(default=None, max_length=50)
     derived_driver_key: Optional[int] = Field(default=None)
     derivedtrailerkey: Optional[int] = Field(default=None)
     derivedtruckkey: Optional[int] = Field(default=None)
@@ -845,7 +854,7 @@ class DispatchedTripCreate(BaseModel):
     trip_key: Optional[int] = None
     trip_id: Optional[str] = None
     created_by: Optional[int] = None
-    created_on: Optional[datetime] = None
+    created_on: Optional[str] = None
     derived_driver_key: Optional[int] = None
     derivedtrailerkey: Optional[int] = None
     derivedtruckkey: Optional[int] = None
@@ -856,7 +865,7 @@ class DispatchedTripUpdate(BaseModel):
     trip_key: Optional[int] = None
     trip_id: Optional[str] = None
     created_by: Optional[int] = None
-    created_on: Optional[datetime] = None
+    created_on: Optional[str] = None
     derived_driver_key: Optional[int] = None
     derivedtrailerkey: Optional[int] = None
     derivedtruckkey: Optional[int] = None
@@ -868,7 +877,7 @@ class DispatchedTripUpsert(BaseModel):
     trip_key: Optional[int] = None
     trip_id: Optional[str] = None
     created_by: Optional[int] = None
-    created_on: Optional[datetime] = None
+    created_on: Optional[str] = None
     derived_driver_key: Optional[int] = None
     derivedtrailerkey: Optional[int] = None
     derivedtruckkey: Optional[int] = None

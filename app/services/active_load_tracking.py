@@ -146,11 +146,12 @@ async def get_active_load_tracking_by_created_at(
     sort_order: str = Query(default="desc", regex="^(asc|desc)$", description="Sort order: asc or desc")
 ):
     """
-    Get active load tracking records by created_at date (YYYY-MM-DD format) with optional sorting
+    Get active load tracking records by created_at date (YYYY-MM-DD format) with optional sorting.
+    Note: created_at is now stored as string in format 'YYYY-MM-DD HH:MM:SS', this endpoint filters by date part only.
     """
     logger.info(f"Getting active load tracking records by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}")
-    
-    # Validate date format
+
+    # Validate date format - still accept YYYY-MM-DD format for filtering
     try:
         from datetime import datetime
         datetime.strptime(created_at_date, "%Y-%m-%d")
@@ -159,7 +160,7 @@ async def get_active_load_tracking_by_created_at(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid date format. Use YYYY-MM-DD format (e.g., 2025-09-10)"
         )
-    
+
     records = ActiveLoadTracking.get_by_created_at(created_at_date=created_at_date, limit=limit, sort_by=sort_by, sort_order=sort_order)
     return records
 
