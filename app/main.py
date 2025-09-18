@@ -19,6 +19,7 @@ from services.trailer_unit_mapping import router as trailer_unit_mapping_router
 from services.active_load_tracking import router as active_load_tracking_router
 from services.violation_alerts import router as violation_alerts_router
 from services.dispatched_trips import router as dispatched_trips_router
+from services.driver_mapping import router as driver_mapping_router
 
 # Import new admin routers
 from services.admin_users import router as admin_users_router
@@ -66,6 +67,7 @@ app.include_router(trailer_unit_mapping_router, tags=["trailer-unit-mapping"])
 app.include_router(active_load_tracking_router)
 app.include_router(violation_alerts_router)
 app.include_router(dispatched_trips_router)
+app.include_router(driver_mapping_router, tags=["driver-mapping"])
 
 # Include new admin routers
 app.include_router(admin_users_router)
