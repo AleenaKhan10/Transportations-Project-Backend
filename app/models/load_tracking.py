@@ -19,8 +19,8 @@ class ActiveLoadTracking(SQLModel, table=True):
     driver_phone_number: Optional[str] = Field(default=None, max_length=50)
     truck_unit: Optional[int] = Field(default=None)
     start_time: Optional[str] = Field(default=None, max_length=50)
-    start_odometer_miles: Optional[int] = Field(default=None)
-    current_odometer_miles: Optional[int] = Field(default=None)
+    start_odometer_miles: Optional[float] = Field(default=None)
+    current_odometer_miles: Optional[float] = Field(default=None)
     miles_threshold: Optional[int] = Field(default=250)
     current_stop_start: Optional[str] = Field(default=None, max_length=50)
     total_distance_traveled: Optional[Decimal] = Field(default=Decimal('0'), max_digits=10, decimal_places=2)
@@ -350,8 +350,8 @@ class ActiveLoadTrackingCreate(BaseModel):
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
     start_time: Optional[str] = None
-    start_odometer_miles: Optional[int] = None
-    current_odometer_miles: Optional[int] = None
+    start_odometer_miles: Optional[float] = None
+    current_odometer_miles: Optional[float] = None
     miles_threshold: Optional[int] = 250
     current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = Decimal('0')
@@ -370,8 +370,8 @@ class ActiveLoadTrackingUpdate(BaseModel):
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
     start_time: Optional[str] = None
-    start_odometer_miles: Optional[int] = None
-    current_odometer_miles: Optional[int] = None
+    start_odometer_miles: Optional[float] = None
+    current_odometer_miles: Optional[float] = None
     miles_threshold: Optional[int] = None
     current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = None
@@ -391,8 +391,8 @@ class ActiveLoadTrackingUpsert(BaseModel):
     driver_phone_number: Optional[str] = None
     truck_unit: Optional[int] = None
     start_time: Optional[str] = None
-    start_odometer_miles: Optional[int] = None
-    current_odometer_miles: Optional[int] = None
+    start_odometer_miles: Optional[float] = None
+    current_odometer_miles: Optional[float] = None
     miles_threshold: Optional[int] = None
     current_stop_start: Optional[str] = None
     total_distance_traveled: Optional[Decimal] = None
@@ -414,7 +414,7 @@ class ViolationAlert(SQLModel, table=True):
     location_lat: Optional[float] = Field(default=None)
     location_lng: Optional[float] = Field(default=None)
     distance_traveled_miles: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
-    current_odometer_miles: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
+    current_odometer_miles: Optional[float] = Field(default=None)
     stop_duration_minutes: Optional[int] = Field(default=None)
     current_speed: Optional[Decimal] = Field(default=None, max_digits=5, decimal_places=2)
     alert_sent_to_slack: Optional[bool] = Field(default=True)
@@ -469,13 +469,9 @@ class ViolationAlert(SQLModel, table=True):
     def get_by_created_at(cls, created_at_date: str, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ViolationAlert"]:
         """Get violation alerts by created_at date (YYYY-MM-DD format)"""
         logger.info(f'Getting violation alerts by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+
         with cls.get_session() as session:
             try:
-                # Parse the date string
-                from datetime import datetime
-                target_date = datetime.strptime(created_at_date, "%Y-%m-%d").date()
-                
                 # Validate sort_by field
                 valid_sort_fields = {
                     'id', 'load_id', 'vehicle_id', 'violation_time', 'distance_traveled_miles',
@@ -483,18 +479,20 @@ class ViolationAlert(SQLModel, table=True):
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
-                
+
                 # Build query with date filter (match date part only)
-                statement = select(cls).where(text("DATE(created_at) = :target_date")).params(target_date=target_date)
-                
+                # Since created_at is now a string in format 'YYYY-MM-DD HH:MM:SS', we use LIKE to match the date part
+                date_pattern = f"{created_at_date}%"
+                statement = select(cls).where(cls.created_at.like(date_pattern))
+
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
                 else:
                     statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except ValueError as ve:
                 logger.error(f'Invalid date format: {ve}', exc_info=True)
                 return []
@@ -506,15 +504,22 @@ class ViolationAlert(SQLModel, table=True):
     def create(cls, record_data: "ViolationAlertCreate") -> Optional["ViolationAlert"]:
         """Create a new violation alert"""
         logger.info('Creating violation alert record')
-        
+
         with cls.get_session() as session:
             try:
-                record = cls(**record_data.model_dump(exclude_unset=True))
+                # Convert to dict and set created_at if not provided
+                record_dict = record_data.model_dump(exclude_unset=True)
+                current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+                if 'created_at' not in record_dict or record_dict['created_at'] is None:
+                    record_dict['created_at'] = current_time
+
+                record = cls(**record_dict)
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
                 logger.error(f'Database create error: {err}', exc_info=True)
                 session.rollback()
@@ -569,9 +574,11 @@ class ViolationAlert(SQLModel, table=True):
     def upsert(cls, record_data: "ViolationAlertUpsert") -> Optional["ViolationAlert"]:
         """Upsert a violation alert (insert or update if exists)"""
         logger.info('Upserting violation alert record')
-        
+
         with cls.get_session() as session:
             try:
+                current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
                 if record_data.id:
                     # Update existing record
                     record = session.exec(select(cls).where(cls.id == record_data.id)).first()
@@ -584,17 +591,19 @@ class ViolationAlert(SQLModel, table=True):
                         session.commit()
                         session.refresh(record)
                         return record
-                
+
                 # Create new record
                 record_dict = record_data.model_dump(exclude_unset=True)
                 if 'id' in record_dict and record_dict['id'] is None:
                     del record_dict['id']
+                if 'created_at' not in record_dict or record_dict['created_at'] is None:
+                    record_dict['created_at'] = current_time
                 record = cls(**record_dict)
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
                 logger.error(f'Database upsert error: {err}', exc_info=True)
                 session.rollback()
@@ -608,10 +617,11 @@ class ViolationAlertCreate(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
-    current_odometer_miles: Optional[Decimal] = None
+    current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
     current_speed: Optional[Decimal] = None
     alert_sent_to_slack: Optional[bool] = True
+    created_at: Optional[str] = None
 
 
 class ViolationAlertUpdate(BaseModel):
@@ -621,10 +631,11 @@ class ViolationAlertUpdate(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
-    current_odometer_miles: Optional[Decimal] = None
+    current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
     current_speed: Optional[Decimal] = None
     alert_sent_to_slack: Optional[bool] = None
+    created_at: Optional[str] = None
 
 
 class ViolationAlertUpsert(BaseModel):
@@ -635,10 +646,11 @@ class ViolationAlertUpsert(BaseModel):
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
     distance_traveled_miles: Optional[Decimal] = None
-    current_odometer_miles: Optional[Decimal] = None
+    current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
     current_speed: Optional[Decimal] = None
     alert_sent_to_slack: Optional[bool] = None
+    created_at: Optional[str] = None
 
 
 class DispatchedTrip(SQLModel, table=True):
