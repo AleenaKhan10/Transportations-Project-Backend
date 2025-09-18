@@ -56,62 +56,62 @@ def process_message_generic(message: str):
 
 # A mapping of approach to slack channels
 approach_to_channel = {
-    "approach1": settings.ALERTS_APPROACH1_SLACK_CHANNEL,
+    # "approach1": settings.ALERTS_APPROACH1_SLACK_CHANNEL,
     "approach2": settings.ALERTS_APPROACH2_SLACK_CHANNEL
 }
 
 # A dictionary of readable and visually appealing set of templates
 alert_templates = {
-    "approach1": {
+    # "approach1": {
         
-        "⚠️ Driver Setpoint Mismatch": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`"
-        ), process_message_generic),
-        "🔥 99°F Required Temp": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`"
-        ), process_message_generic),
-        "🚨 Temperature Out of Range": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`\n"
-            "> *Note:* `{remarks}`"
-        ), process_message_generic),
-        "ℹ️ Dry Load": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-            "> *Actual Reefer Mode:* `{reefer_mode}`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Last Updated On:* `{samsara_temp_time}`\n"
-            "> *Note:* `{remarks}`"
-        ), process_message_generic),
-        "‼️ Attention / Issue ‼️": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-            "> *Actual Reefer Mode:* `{reefer_mode} ‼️`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-            "> *Last Updated On:* `{samsara_temp_time}`"
-        ), process_message_generic),
-    },
+    #     "⚠️ Driver Setpoint Mismatch": ((
+    #         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    #         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+    #         "> *Required Temp:* `{required_temp}°`\n"
+    #         "> *Driver Set:* `{driver_set_temp}°`\n"
+    #         "> *Samsara Temp:* `{samsara_temp}°`\n"
+    #         "> *Captured At:* `{samsara_temp_time}`"
+    #     ), process_message_generic),
+    #     "🔥 99°F Required Temp": ((
+    #         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    #         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+    #         "> *Required Temp:* `{required_temp}°`\n"
+    #         "> *Driver Set:* `{driver_set_temp}°`\n"
+    #         "> *Samsara Temp:* `{samsara_temp}°`\n"
+    #         "> *Captured At:* `{samsara_temp_time}`"
+    #     ), process_message_generic),
+    #     "🚨 Temperature Out of Range": ((
+    #         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    #         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+    #         "> *Severity:* `{priority_id} ({priority})`\n"
+    #         "> *Required Temp:* `{required_temp}°`\n"
+    #         "> *Driver Set:* `{driver_set_temp}°`\n"
+    #         "> *Samsara Temp:* `{samsara_temp}°`\n"
+    #         "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
+    #         "> *Captured At:* `{samsara_temp_time}`\n"
+    #         "> *Note:* `{remarks}`"
+    #     ), process_message_generic),
+    #     "ℹ️ Dry Load": ((
+    #         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    #         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+    #         "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
+    #         "> *Actual Reefer Mode:* `{reefer_mode}`\n"
+    #         "> *Samsara Temp:* `{samsara_temp}°`\n"
+    #         "> *Last Updated On:* `{samsara_temp_time}`\n"
+    #         "> *Note:* `{remarks}`"
+    #     ), process_message_generic),
+    #     "‼️ Attention / Issue ‼️": ((
+    #         "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
+    #         ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
+    #         "> *Severity:* `{priority_id} ({priority})`\n"
+    #         "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
+    #         "> *Actual Reefer Mode:* `{reefer_mode} ‼️`\n"
+    #         "> *Required Temp:* `{required_temp}°`\n"
+    #         "> *Samsara Temp:* `{samsara_temp}°`\n"
+    #         "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
+    #         "> *Last Updated On:* `{samsara_temp_time}`"
+    #     ), process_message_generic),
+    # },
     "approach2": {
         "🔥 99°F Required Temp": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
