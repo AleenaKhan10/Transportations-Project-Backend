@@ -1,6 +1,6 @@
 CREATE OR REPLACE TABLE FUNCTION `agy-intelligence-hub.diamond.get_master_grouped_subtrip_level`(since_value INT64, since_unit STRING, if_has_atleast_one_alert BOOL) AS
 WITH filtered AS (
-  SELECT * FROM `diamond.get_master_with_alerts`(FALSE)
+  SELECT * FROM `diamond.get_master_with_alerts_v2`(FALSE)
   WHERE 
     samsara_temp_time >= CASE since_unit
       WHEN 'MICROSECOND' THEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL since_value MICROSECOND)
@@ -11,6 +11,30 @@ WITH filtered AS (
       WHEN 'DAY' THEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL since_value DAY)
       ELSE TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL since_value HOUR) -- Default to HOUR
     END
+),
+ddp_cache AS (
+  SELECT
+   *
+  FROM `bronze.weather_cache`
+  QUALIFY row_number() over (
+    PARTITION BY 
+      CAST(latitude AS STRING), 
+      CAST(longitude AS STRING), 
+      TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(timestamp), 60*60) * 60*60) 
+    ORDER BY ingestedAt DESC
+  ) = 1
+),
+weather_info_added AS (
+  SELECT DISTINCT
+    a.*,
+    b.* EXCEPT (latitude, longitude),
+    TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(a.samsara_temp_time), 60*60) * 60*60) AS window_60min
+  FROM filtered a
+  LEFT JOIN ddp_cache b
+    ON ROUND(a.latitude, 2) = ROUND(b.latitude, 2)
+    AND ROUND(a.longitude, 2) = ROUND(b.longitude, 2)
+    AND TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(a.samsara_temp_time), 60*60) * 60*60) = TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(b.ingestedAt), 60*60) * 60*60)
+  ORDER BY 3 DESC
 ),
 alerts_in_group AS (
   SELECT
@@ -31,7 +55,7 @@ alerts_in_group AS (
     sub_leg_start_time,
     sub_leg_end_time
   ) > 0 AS has_any_alert
-  FROM filtered
+  FROM weather_info_added
 ),
 grouped AS (
   SELECT
@@ -52,8 +76,15 @@ grouped AS (
       samsara_temp,
       samsara_temp_time,
       alert_type,
+      latitude,
+      longitude,
+      location,
+      region,
+      temperature,
+      description,
+      wind_mph,
       remarks
-    ) ORDER BY samsara_temp_time) as t,
+    ) ORDER BY samsara_temp_time DESC) as t,
     trip_start_time,
     trip_end_time,
     leg_start_time,
