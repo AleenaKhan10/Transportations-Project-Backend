@@ -4,6 +4,7 @@ from typing import NamedTuple
 from collections import defaultdict
 from cachetools import TTLCache, cached
 
+from fastapi import BackgroundTasks
 import pytz
 import pandas as pd
 import pandas_gbq as pdg
@@ -24,12 +25,13 @@ from models.slack import (
 from models.alert_filter import MuteEnum
 from helpers.agy_utils import get_id_type
 from helpers.time_utils import BQTimeUnit
+from helpers.utils import run_parallel_exec
 from logic.alerts.filters import (
     toggle_entity_alert,
     get_excluded_alert_filters,
     filter_df_by_alert_filters,
 )
-from utils.weather_api import get_weather
+from utils.weather_api import get_weather, cache_weather_bq, make_weather_info
 
 
 INTERVAL = 1
@@ -56,62 +58,11 @@ def process_message_generic(message: str):
 
 # A mapping of approach to slack channels
 approach_to_channel = {
-    "approach1": settings.ALERTS_APPROACH1_SLACK_CHANNEL,
     "approach2": settings.ALERTS_APPROACH2_SLACK_CHANNEL
 }
 
 # A dictionary of readable and visually appealing set of templates
 alert_templates = {
-    "approach1": {
-        
-        "⚠️ Driver Setpoint Mismatch": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`"
-        ), process_message_generic),
-        "🔥 99°F Required Temp": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`"
-        ), process_message_generic),
-        "🚨 Temperature Out of Range": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Driver Set:* `{driver_set_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-            "> *Captured At:* `{samsara_temp_time}`\n"
-            "> *Note:* `{remarks}`"
-        ), process_message_generic),
-        "ℹ️ Dry Load": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-            "> *Actual Reefer Mode:* `{reefer_mode}`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Last Updated On:* `{samsara_temp_time}`\n"
-            "> *Note:* `{remarks}`"
-        ), process_message_generic),
-        "‼️ Attention / Issue ‼️": ((
-            "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
-            ">*Leg:* `{leg_id}` | *Status:* `{status}`\n"
-            "> *Severity:* `{priority_id} ({priority})`\n"
-            "> *Required Reefer Mode:* `{required_reefer_mode}`\n"
-            "> *Actual Reefer Mode:* `{reefer_mode} ‼️`\n"
-            "> *Required Temp:* `{required_temp}°`\n"
-            "> *Samsara Temp:* `{samsara_temp}°`\n"
-            "> *Deviation (Actual/Max):* `{temp_diff}° / {max_allowed_deviation}°`\n"
-            "> *Last Updated On:* `{samsara_temp_time}`"
-        ), process_message_generic),
-    },
     "approach2": {
         "🔥 99°F Required Temp": ((
             "*Trip:* `{trip_id}` | *Trailer:* `{trailer_id}` | *Truck:* `{truck_id}`\n"
@@ -145,7 +96,7 @@ alert_templates = {
 # ------ Main Functions to send Slack messages ------
 
 
-def send_slack_temp_alerts():
+def send_slack_temp_alerts(bt: BackgroundTasks | None = None):
     interval_unit = INTERVAL_UNIT.value.lower()
     context_unit_part = interval_unit if INTERVAL == 1 else f"{INTERVAL} {interval_unit}s"    
     
@@ -160,6 +111,26 @@ def send_slack_temp_alerts():
     """
 
     alerts_df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
+    lat_lons = alerts_df[["latitude", "longitude"]].apply(tuple, axis=1).unique()
+    
+    def get_weather_data(lat_lon):
+        lat, lon = lat_lon
+        return get_weather(lat, lon)
+    
+    lat_lons_weather = run_parallel_exec(get_weather_data, lat_lons)
+    
+    if bt is not None:
+        bt.add_task(cache_weather_bq, wds=[w for _, w in lat_lons_weather if w is not None])
+    else:
+        cache_weather_bq(wds=[w for _, w in lat_lons_weather if w is not None])
+    
+    weather_df = pd.DataFrame([{
+        "latitude": c[0],
+        "longitude": c[1],
+        "weather_info": make_weather_info(w),
+    } for c, w in lat_lons_weather if w is not None])
+    
+    alerts_df = alerts_df.merge(weather_df, how="left", on=["latitude", "longitude"])
     
     # Filter out alerts that match the filters
     alerts_df = filter_df_by_alert_filters(alerts_df, filters)
@@ -196,12 +167,8 @@ def send_slack_temp_alerts():
 
                 # Process each alert individually to add mute buttons
                 for _, row in _df.iterrows():
-                    if pd.notnull(row.get("latitude")) and pd.notnull(row.get("longitude")):
-                        weather_info = get_weather(row["latitude"], row["longitude"])
-                    else:
-                        weather_info = "Weather data unavailable"
                     alert_message = message_processor(template.format(**row))
-                    alert_message += f"\n> *Weather:* {weather_info}" # append weather line
+                    alert_message += f"\n> *Weather:* {row['weather_info']}" # append weather line
                     blocks.append(SectionBlock(text=MDText(text=alert_message)))
                     
                     # Add mute/unmute buttons for each alert (using both trip_id and trailer_id)

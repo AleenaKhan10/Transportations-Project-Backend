@@ -140,7 +140,7 @@ ranked AS (
 filtered AS (
   SELECT * except (rn)
   FROM ranked
-  WHERE CASE WHEN TRUE THEN rn = 1 ELSE TRUE END
+  WHERE CASE WHEN only_latest THEN rn = 1 ELSE TRUE END
 ),
 
 classified AS (
