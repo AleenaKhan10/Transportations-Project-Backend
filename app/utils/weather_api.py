@@ -61,8 +61,11 @@ def get_weather(lat: float, lon: float, aqi: bool = False):
         response.raise_for_status()
         data = response.json()
         
-        locat_ts = datetime.fromtimestamp(data['current']['last_updated_epoch'])
-        utc_ts = pytz.timezone(data['location']['tz_id']).localize(locat_ts).astimezone(timezone.utc)
+        locat_ts = datetime.fromtimestamp(
+            data['current']['last_updated_epoch'], 
+            tz=pytz.timezone(data['location']['tz_id'])
+        )
+        utc_ts = locat_ts.astimezone(timezone.utc)
 
         weather_data = WeatherData(
             latitude=lat,
