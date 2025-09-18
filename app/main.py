@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from services import (
     auth_router,
     trip_router,
-    ingest_router,
     alert_router,
     drivers_router,
     webhook_router,
@@ -52,7 +51,7 @@ app.add_event_handler("startup", create_db_and_tables)
 app.include_router(auth_router, tags=["auth"])
 app.include_router(users_router, tags=["users"])
 app.include_router(trip_router, tags=["trips"])
-app.include_router(ingest_router, tags=["ingest"])
+# app.include_router(ingest_router, tags=["ingest"])
 app.include_router(alert_router, tags=["alerts"])
 app.include_router(drivers_router, tags=["drivers"])
 app.include_router(vapi_router, tags=["vapi"])
