@@ -13,13 +13,13 @@ WITH filtered AS (
     END
 ),
 ddp_cache AS (
-  SELECT
-   *
+  SELECT DISTINCT
+   * EXCEPT (ingestedAt, raw_data)
   FROM `bronze.weather_cache`
   QUALIFY row_number() over (
     PARTITION BY 
-      CAST(latitude AS STRING), 
-      CAST(longitude AS STRING), 
+      CAST(ROUND(latitude, 2) AS STRING), 
+      CAST(ROUND(longitude, 2) AS STRING), 
       TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(timestamp), 60*60) * 60*60) 
     ORDER BY ingestedAt DESC
   ) = 1
@@ -33,8 +33,9 @@ weather_info_added AS (
   LEFT JOIN ddp_cache b
     ON ROUND(a.latitude, 2) = ROUND(b.latitude, 2)
     AND ROUND(a.longitude, 2) = ROUND(b.longitude, 2)
-    AND TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(a.samsara_temp_time), 60*60) * 60*60) = TIMESTAMP_SECONDS(DIV(UNIX_SECONDS(b.ingestedAt), 60*60) * 60*60)
-  ORDER BY 3 DESC
+    AND a.samsara_temp_time 
+      BETWEEN TIMESTAMP_SECONDS(UNIX_SECONDS(b.timestamp) - 30*60) 
+      AND TIMESTAMP_SECONDS(UNIX_SECONDS(b.timestamp) + 30*60)
 ),
 alerts_in_group AS (
   SELECT

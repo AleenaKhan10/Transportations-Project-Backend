@@ -25,13 +25,12 @@ from models.slack import (
 from models.alert_filter import MuteEnum
 from helpers.agy_utils import get_id_type
 from helpers.time_utils import BQTimeUnit
-from helpers.utils import run_parallel_exec
 from logic.alerts.filters import (
     toggle_entity_alert,
     get_excluded_alert_filters,
     filter_df_by_alert_filters,
 )
-from utils.weather_api import get_weather, cache_weather_bq, make_weather_info
+from utils.weather_api import get_weather_df
 
 
 INTERVAL = 1
@@ -113,22 +112,7 @@ def send_slack_temp_alerts(bt: BackgroundTasks | None = None):
     alerts_df = pdg.read_gbq(query, progress_bar_type=None, project_id='agy-intelligence-hub')
     lat_lons = alerts_df[["latitude", "longitude"]].apply(tuple, axis=1).unique()
     
-    def get_weather_data(lat_lon):
-        lat, lon = lat_lon
-        return get_weather(lat, lon)
-    
-    lat_lons_weather = run_parallel_exec(get_weather_data, lat_lons)
-    
-    if bt is not None:
-        bt.add_task(cache_weather_bq, wds=[w for _, w in lat_lons_weather if w is not None])
-    else:
-        cache_weather_bq(wds=[w for _, w in lat_lons_weather if w is not None])
-    
-    weather_df = pd.DataFrame([{
-        "latitude": c[0],
-        "longitude": c[1],
-        "weather_info": make_weather_info(w),
-    } for c, w in lat_lons_weather if w is not None])
+    weather_df = get_weather_df(lat_lons, bt=bt, keep_raw_columns_in_df=False)
     
     alerts_df = alerts_df.merge(weather_df, how="left", on=["latitude", "longitude"])
     
