@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -7,7 +7,7 @@ from helpers.time_utils import BQTimeUnit
 from logic.trips import fetch_latest_alerts
 from logic.auth.security import get_current_user
 from logic.trips import get_trailer_and_trips, get_trip_data
-from models.trips import Trip, TripCreate, TripUpdate
+from models.trips import Trip, TripCreate
 from helpers import logger
 
 
@@ -41,8 +41,9 @@ async def trip_data(trip_id: str, trailer_id: str):
 async def get_latest_alerts(
     value: int = Query(1, gt=0, description="Numeric value for time unit"),
     unit: BQTimeUnit = Query(BQTimeUnit.HOUR, description="Unit of time (minutes, hours, days, ...)"),
+    bt: BackgroundTasks = BackgroundTasks(),
 ):
-    result = fetch_latest_alerts(value, unit)
+    result = fetch_latest_alerts(value, unit, bt)
     return result
 
 
