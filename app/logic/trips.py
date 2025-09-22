@@ -58,7 +58,7 @@ def add_weather_data_to_grouped_alerts(df: pd.DataFrame, bt: BackgroundTasks = N
     del df_normalized
 
     # Filter out rows where location is not available and samsara temp time is older than 1 hour
-    result_df = result_df[
+    temp_df = result_df[
         pd.isna(result_df["location"])
         & (
             result_df["samsara_temp_time"]
@@ -67,16 +67,16 @@ def add_weather_data_to_grouped_alerts(df: pd.DataFrame, bt: BackgroundTasks = N
     ]
 
     # Map the latitude and longitude columns to rounded values
-    result_df[["latitude", "longitude"]] = result_df[["latitude", "longitude"]].map(
+    temp_df[["latitude", "longitude"]] = temp_df[["latitude", "longitude"]].map(
         lambda x: round(x, 2)
     )
 
     # Get unique latitude and longitude pairs
     lat_lons = (
-        result_df[
-            pd.isna(result_df["location"])
+        temp_df[
+            pd.isna(temp_df["location"])
             & (
-                result_df["samsara_temp_time"]
+                temp_df["samsara_temp_time"]
                 > (datetime.now(tz=timezone.utc) - timedelta(hours=1))
             )
         ][["latitude", "longitude"]]
@@ -85,7 +85,7 @@ def add_weather_data_to_grouped_alerts(df: pd.DataFrame, bt: BackgroundTasks = N
         .unique()
     )
 
-    if lat_lons:
+    if len(lat_lons) > 0:
         # Fetch weather data
         weather_df = get_weather_df(lat_lons, bt=bt, keep_raw_columns_in_df=False)
 
