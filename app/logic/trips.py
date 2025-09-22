@@ -85,11 +85,14 @@ def add_weather_data_to_grouped_alerts(df: pd.DataFrame, bt: BackgroundTasks = N
         .unique()
     )
 
-    # Fetch weather data
-    weather_df = get_weather_df(lat_lons, bt=bt, keep_raw_columns_in_df=False)
+    if lat_lons:
+        # Fetch weather data
+        weather_df = get_weather_df(lat_lons, bt=bt, keep_raw_columns_in_df=False)
 
-    # Merge weather data with original DataFrame
-    result_df = result_df.merge(weather_df, how="left", on=["latitude", "longitude"])
+        # Merge weather data with original DataFrame
+        result_df = result_df.merge(weather_df, how="left", on=["latitude", "longitude"])
+    else:
+        result_df["weather_info"] = None
 
     # Add a weather info column
     result_df["weather_info"] = result_df["weather_info"].fillna(
