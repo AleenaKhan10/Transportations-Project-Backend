@@ -406,13 +406,14 @@ class ActiveLoadTrackingUpsert(BaseModel):
 
 class ViolationAlert(SQLModel, table=True):
     __tablename__ = "violation_alerts"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     load_id: Optional[str] = Field(default=None, max_length=50)
     vehicle_id: Optional[str] = Field(default=None, max_length=50)
     violation_time: Optional[str] = Field(default=None, max_length=50)
     location_lat: Optional[float] = Field(default=None)
     location_lng: Optional[float] = Field(default=None)
+    location: Optional[str] = Field(default=None, max_length=255)
     distance_traveled_miles: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
     current_odometer_miles: Optional[float] = Field(default=None)
     stop_duration_minutes: Optional[int] = Field(default=None)
@@ -434,12 +435,13 @@ class ViolationAlert(SQLModel, table=True):
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'id', 'load_id', 'vehicle_id', 'violation_time', 'distance_traveled_miles',
-                    'current_odometer_miles', 'stop_duration_minutes', 'current_speed', 'created_at'
+                    'id', 'load_id', 'vehicle_id', 'violation_time', 'location_lat', 'location_lng',
+                    'location', 'distance_traveled_miles', 'current_odometer_miles',
+                    'stop_duration_minutes', 'current_speed', 'created_at'
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
-                
+
                 # Build query with sorting
                 if sort_order.lower() == "asc":
                     statement = select(cls).order_by(getattr(cls, sort_by)).limit(limit)
@@ -474,8 +476,9 @@ class ViolationAlert(SQLModel, table=True):
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'id', 'load_id', 'vehicle_id', 'violation_time', 'distance_traveled_miles',
-                    'current_odometer_miles', 'stop_duration_minutes', 'current_speed', 'created_at'
+                    'id', 'load_id', 'vehicle_id', 'violation_time', 'location_lat', 'location_lng',
+                    'location', 'distance_traveled_miles', 'current_odometer_miles',
+                    'stop_duration_minutes', 'current_speed', 'created_at'
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -616,6 +619,7 @@ class ViolationAlertCreate(BaseModel):
     violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    location: Optional[str] = None
     distance_traveled_miles: Optional[Decimal] = None
     current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
@@ -630,6 +634,7 @@ class ViolationAlertUpdate(BaseModel):
     violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    location: Optional[str] = None
     distance_traveled_miles: Optional[Decimal] = None
     current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
@@ -645,6 +650,7 @@ class ViolationAlertUpsert(BaseModel):
     violation_time: Optional[str] = None
     location_lat: Optional[float] = None
     location_lng: Optional[float] = None
+    location: Optional[str] = None
     distance_traveled_miles: Optional[Decimal] = None
     current_odometer_miles: Optional[float] = None
     stop_duration_minutes: Optional[int] = None
