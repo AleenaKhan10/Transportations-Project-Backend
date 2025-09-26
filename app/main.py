@@ -5,7 +5,7 @@ from services import (
     trip_router,
     alert_router,
     drivers_router,
-    webhook_router, 
+    webhook_router,
 )
 from services.users import router as users_router
 from services.vapi import router as vapi_router, router_no_auth as vapi_router_no_auth
@@ -28,6 +28,9 @@ from services.admin_permissions import router as admin_permissions_router
 from services.admin_sessions import router as admin_sessions_router
 from services.admin_audit import router as admin_audit_router
 from services.admin_export import router as admin_export_router
+
+# new test router
+from services.test_service import router as test_service
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -76,6 +79,9 @@ app.include_router(admin_permissions_router)
 app.include_router(admin_sessions_router)
 app.include_router(admin_audit_router)
 app.include_router(admin_export_router)
+
+# test
+app.include_router(test_service)
 
 #main
 if __name__ == "__main__":
