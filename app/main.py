@@ -32,11 +32,16 @@ from services.admin_export import router as admin_export_router
 # new test router
 from services.test_service import router as test_service
 
+# new data apis
+from services.driver_data import router as drive_data
+
 from db.database import engine
 from sqlmodel import SQLModel
 
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+
 
 app = FastAPI(title="AGY Intelligence Hub", version="1.0.0")
 
@@ -82,8 +87,10 @@ app.include_router(admin_export_router)
 
 # test
 app.include_router(test_service)
+app.include_router(drive_data)
 
-#main
+# main
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
