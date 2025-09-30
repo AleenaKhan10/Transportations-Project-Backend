@@ -38,7 +38,4 @@ def get_driver_combined(driver_id: str):
             status_code=404,
             detail="No trip/active load found for this driver",
         )
-    return {
-        "message": "Driver trip and active load data fetched successfully",
-        "data": result,
-    }
+    return result
