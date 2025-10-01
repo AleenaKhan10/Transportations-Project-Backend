@@ -54,6 +54,7 @@ class ActiveLoadTracking(SQLModel, table=True):
     miles_threshold: Optional[int] = Field(default=250)
     driver_name: Optional[str] = Field(default=None, max_length=50)
     status: Optional[str] = Field(default="EnRouteToDelivery", max_length=50)
+    driver_phone_number: Optional[str] = Field(default=None, max_length=50)
 
     @classmethod
     def get_session(cls) -> Session:
