@@ -2,6 +2,11 @@ from typing import Optional, List, Dict
 from sqlmodel import Field, SQLModel, Session, select
 from db import engine
 import logging
+from utils.vapi_client import vapi_client
+from models.vapi import BatchCallRequest
+from config import settings
+import httpx
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,12 @@ class DriverTripData(SQLModel, table=True):
     def get_by_driver(cls, driver_id: str) -> Optional["DriverTripData"]:
         with cls.get_session() as session:
             stmt = select(cls).where(cls.primaryDriverId == driver_id).limit(1)
+            return session.exec(stmt).first()
+
+    @classmethod
+    def get_by_trip(cls, trip_id: str) -> Optional["DriverTripData"]:
+        with cls.get_session() as session:
+            stmt = select(cls).where(cls.tripId == trip_id).limit(1)
             return session.exec(stmt).first()
 
 
@@ -187,6 +198,11 @@ def get_driver_summary(driver_id: str) -> Dict:
             "driver_name": (
                 getattr(active_load, "driver_name", None) if active_load else None
             ),
+            "phoneNumber": (
+                getattr(active_load, "driver_phone_number", None)
+                if active_load
+                else None
+            ),
             "violation_time": (
                 getattr(violation_alert, "violation_time", None)
                 if violation_alert
@@ -206,6 +222,80 @@ def get_driver_summary(driver_id: str) -> Dict:
         logger.error(f"Error fetching driver summary: {err}", exc_info=True)
         return {
             "message": "Error fetching driver summary",
+            "error": str(err),
+            "trace": error_details,  # ⚠️ remove this in production
+        }
+
+
+# -------------------------------
+# MAKE VAPI MULTIPLE CALLS - BATCH CALL
+# -------------------------------
+async def make_drivers_violation_batch_call(request: BatchCallRequest):
+    try:
+        logger.info(f"📞 Processing batch VAPI calls for data : {request}")
+
+        # Example: convert payload to VAPI batch call format
+        vapi_payload = {
+            "name": "Driver Violations Batch Call",  # ✅ required
+            "assistantId": settings.VAPI_ASSISTANT_ID,
+            "phoneNumberId": getattr(settings, "VAPI_PHONENUMBER_ID", ""),
+            "customers": [],
+        }
+
+        # Transform Payload
+        for driver in request.drivers:
+            vapi_payload["customers"].append(
+                {
+                    "number": "+12025550100",  # TODO: normalize to +E.164 driver.phoneNumber
+                    "name": driver.driverName,
+                    "assistantOverrides": {
+                        "context": {
+                            "driverId": driver.driverId,
+                            "driverName": driver.driverName,
+                            "tripId": driver.violations.tripId,
+                            "violations": [
+                                {
+                                    "type": v.type,
+                                    "description": v.description,
+                                    # "severity": v.severity,
+                                }
+                                for v in driver.violations.violationDetails
+                            ],
+                        }
+                    },
+                }
+            )
+
+        # Make API call to VAPI campaign endpoint
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.vapi.ai/campaign",
+                json=vapi_payload,
+                headers={
+                    "Authorization": f"Bearer {settings.VAPI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=30.0,
+            )
+        if response.status_code != 200:
+            logger.error(f"❌ VAPI API Error: {response.status_code} - {response.text}")
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"VAPI API Error: {response.text}",
+            )
+        logger.info("✅ Batch call sent successfully")
+        return {
+            "message": "Batch call payload generated successfully",
+            "vapi_payload": vapi_payload,
+            "vapi_response": response.json(),
+        }
+    except Exception as err:
+        import traceback
+
+        error_details = traceback.format_exc()
+        logger.error(f"Error sending batch call: {err}", exc_info=True)
+        return {
+            "message": "Error sending batch call",
             "error": str(err),
             "trace": error_details,  # ⚠️ remove this in production
         }
