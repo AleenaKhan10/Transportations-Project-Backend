@@ -4,7 +4,10 @@ from models.driver_data import (
     ActiveLoadTracking,
     ViolationAlertDriver,
     get_driver_summary,
+    make_drivers_violation_batch_call,
 )
+
+from models.vapi import BatchCallRequest
 
 # Router with prefix + tags
 router = APIRouter(prefix="/driver_data", tags=["driver_data"])
@@ -14,6 +17,15 @@ router = APIRouter(prefix="/driver_data", tags=["driver_data"])
 @router.get("/trips")
 def get_all_trips():
     trips = DriverTripData.get_all()
+    return {
+        "message": "Trips fetched successfully",
+        "data": trips,
+    }
+
+
+@router.get("/trips/{trip_id}")
+def get_by_trip(trip_id):
+    trips = DriverTripData.get_by_trip(trip_id)
     return {
         "message": "Trips fetched successfully",
         "data": trips,
@@ -63,4 +75,11 @@ def get_driver_combined(trip_id: str):
             status_code=404,
             detail="No trip/active load found for this driver",
         )
+    return result
+
+
+# 6 . make driver violation batch call
+@router.post("/call")
+async def make_driver_violation_call(request: BatchCallRequest):
+    result = await make_drivers_violation_batch_call(request)
     return result
