@@ -66,6 +66,9 @@ class ActiveLoadTracking(SQLModel, table=True):
     driver_name: Optional[str] = Field(default=None, max_length=50)
     status: Optional[str] = Field(default="EnRouteToDelivery", max_length=50)
     driver_phone_number: Optional[str] = Field(default=None, max_length=50)
+    start_time: Optional[str] = Field(default=None, max_length=50)
+    start_odometer_miles: Optional[float] = Field(default=None)
+    current_odometer_miles: Optional[float] = Field(default=None)
 
     @classmethod
     def get_session(cls) -> Session:
@@ -203,6 +206,19 @@ def get_driver_summary(driver_id: str) -> Dict:
                 if active_load
                 else None
             ),
+            "startTime": (
+                getattr(active_load, "start_time", None) if active_load else None
+            ),
+            "startOdometer": (
+                getattr(active_load, "start_odometer_miles", None)
+                if active_load
+                else None
+            ),
+            "currentOdometer": (
+                getattr(active_load, "current_odometer_miles", None)
+                if active_load
+                else None
+            ),
             "violation_time": (
                 getattr(violation_alert, "violation_time", None)
                 if violation_alert
@@ -236,9 +252,8 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         # Example: convert payload to VAPI batch call format
         vapi_payload = {
-            "name": "Driver Violations Batch Call",  # ✅ required
-            "assistantId": settings.VAPI_ASSISTANT_ID,
-            "phoneNumberId": getattr(settings, "VAPI_PHONENUMBER_ID", ""),
+            # "assistantId": settings.VAPI_ASSISTANT_ID,
+            # "phoneNumberId": getattr(settings, "VAPI_PHONENUMBER_ID", ""),
             "customers": [],
         }
 
@@ -283,6 +298,7 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 status_code=response.status_code,
                 detail=f"VAPI API Error: {response.text}",
             )
+
         logger.info("✅ Batch call sent successfully")
         return {
             "message": "Batch call payload generated successfully",
