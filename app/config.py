@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     SENDER_EMAIL: str = "aleenakhanraees40@gmail.com"
     SENDER_PASSWORD: str = ""
 
+    # Sentry/GlitchTip settings
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "production"
+    SENTRY_TRACES_SAMPLE_RATE: float = 1.0
+
     class Config:
         env_file = ".env"
         extra = "ignore"

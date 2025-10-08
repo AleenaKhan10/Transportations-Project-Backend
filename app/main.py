@@ -1,5 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+from config import settings
 from services import (
     auth_router,
     trip_router,
@@ -29,11 +34,65 @@ from services.admin_sessions import router as admin_sessions_router
 from services.admin_audit import router as admin_audit_router
 from services.admin_export import router as admin_export_router
 
+# new test router
+from services.test_service import router as test_service
+
+# new data apis
+from services.driver_data import router as drive_data
+
 from db.database import engine
 from sqlmodel import SQLModel
 
+
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+
+
+# Initialize Sentry/GlitchTip for error tracking
+def before_send(event, hint):
+    """
+    Filter events before sending to Sentry.
+    Only capture critical errors and API failures, ignore minor issues.
+    """
+    # Get the exception if available
+    if 'exc_info' in hint:
+        exc_type, exc_value, tb = hint['exc_info']
+
+        # Ignore common HTTP exceptions that aren't real errors
+        ignored_exceptions = [
+            'HTTPException',  # FastAPI's HTTPException for expected errors
+            'RequestValidationError',  # Pydantic validation errors (user input errors)
+            'ValidationError',  # General validation errors
+        ]
+
+        if exc_type.__name__ in ignored_exceptions:
+            return None
+
+    # Only capture errors with severity level of 'error' or higher
+    if event.get('level') in ['error', 'fatal']:
+        return event
+
+    return None
+
+
+# Only initialize Sentry if DSN is configured
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        before_send=before_send,
+        # Capture unhandled exceptions
+        send_default_pii=False,  # Don't send personally identifiable information
+        attach_stacktrace=True,  # Always attach stack traces
+        # Performance monitoring
+        enable_tracing=True,
+    )
+
 
 app = FastAPI(title="AGY Intelligence Hub", version="1.0.0")
 
@@ -46,6 +105,27 @@ app.add_middleware(
 )
 
 app.add_event_handler("startup", create_db_and_tables)
+
+
+# Global exception handler to catch unhandled API errors
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catch all unhandled exceptions and send them to Sentry.
+    This ensures critical API failures are tracked.
+    """
+    # Capture the exception in Sentry
+    if settings.SENTRY_DSN:
+        sentry_sdk.capture_exception(exc)
+
+    # Return a generic error response to the client
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "detail": "An internal server error occurred. The error has been logged and will be investigated.",
+            "error_type": type(exc).__name__
+        }
+    )
 
 # Include existing routers
 app.include_router(auth_router, tags=["auth"])
@@ -77,7 +157,12 @@ app.include_router(admin_sessions_router)
 app.include_router(admin_audit_router)
 app.include_router(admin_export_router)
 
-#main
+# test
+app.include_router(test_service)
+app.include_router(drive_data)
+
+# main
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
