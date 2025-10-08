@@ -2,6 +2,33 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 
 
+# --- Request Schema ---
+class ViolationDetail(BaseModel):
+    type: str
+    description: str
+
+
+class Violations(BaseModel):
+    tripId: str
+    violationDetails: List[ViolationDetail]
+
+
+class DriverData(BaseModel):
+    driverId: str
+    driverName: str
+    phoneNumber: str
+    violations: Violations
+
+
+class BatchCallRequest(BaseModel):
+    callType: str
+    timestamp: str
+    drivers: List[DriverData]
+
+
+# --- Request Schema CLOSE ---
+
+
 class VAPICallRequest(BaseModel):
     driverIds: List[str]
     vapiData: Optional[Dict[str, "VAPIData"]] = None  # Map of driverId to VAPIData
