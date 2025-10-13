@@ -40,6 +40,9 @@ from services.test_service import router as test_service
 # new data apis
 from services.driver_data import router as drive_data
 
+# from services.driver_triggers import router as driver_triggers
+from services.driver_triggers import router as driver_triggers
+
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -55,21 +58,21 @@ def before_send(event, hint):
     Only capture critical errors and API failures, ignore minor issues.
     """
     # Get the exception if available
-    if 'exc_info' in hint:
-        exc_type, exc_value, tb = hint['exc_info']
+    if "exc_info" in hint:
+        exc_type, exc_value, tb = hint["exc_info"]
 
         # Ignore common HTTP exceptions that aren't real errors
         ignored_exceptions = [
-            'HTTPException',  # FastAPI's HTTPException for expected errors
-            'RequestValidationError',  # Pydantic validation errors (user input errors)
-            'ValidationError',  # General validation errors
+            "HTTPException",  # FastAPI's HTTPException for expected errors
+            "RequestValidationError",  # Pydantic validation errors (user input errors)
+            "ValidationError",  # General validation errors
         ]
 
         if exc_type.__name__ in ignored_exceptions:
             return None
 
     # Only capture errors with severity level of 'error' or higher
-    if event.get('level') in ['error', 'fatal']:
+    if event.get("level") in ["error", "fatal"]:
         return event
 
     return None
@@ -123,9 +126,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "detail": "An internal server error occurred. The error has been logged and will be investigated.",
-            "error_type": type(exc).__name__
-        }
+            "error_type": type(exc).__name__,
+        },
     )
+
 
 # Include existing routers
 app.include_router(auth_router, tags=["auth"])
@@ -160,6 +164,7 @@ app.include_router(admin_export_router)
 # test
 app.include_router(test_service)
 app.include_router(drive_data)
+app.include_router(driver_triggers)
 
 # main
 if __name__ == "__main__":

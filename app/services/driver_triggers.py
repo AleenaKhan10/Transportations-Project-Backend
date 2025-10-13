@@ -4,15 +4,19 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 
 
+class Driver(BaseModel):
+    driverId: str
+    name: str
+    phone: str
+
+
 class DriverReminders(BaseModel):
     id: int
     message: str
 
 
 class DriverTriggerRequest(BaseModel):
-    driverId: str
-    name: str
-    phone: str
+    driver: Driver
     selectedReminders: List[DriverReminders]
     selectedViolations: List[DriverReminders]
 
@@ -28,6 +32,10 @@ def get_trip_driverId(driver_id: str):
 
 
 # @router.post("/")
-# def get_trip_driver_id(request: DriverTriggerRequest)s:
-#     result = DriverTriggersData(request)
-#     return result
+# def check_driver_triggers(payload: dict):
+#     return DriverTriggersData.get_driver_trigger(payload)
+
+
+@router.post("/")
+def get_trip_driver_id(request: DriverTriggerRequest):
+    return DriverTriggersData.get_driver_trigger(request.dict())
