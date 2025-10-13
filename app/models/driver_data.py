@@ -313,5 +313,5 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         return {
             "message": "Error sending batch call",
             "error": str(err),
-            "trace": error_details,  # ⚠️ remove this in production
+            "trace": error_details,  # ⚠️ remove this in productions
         }
