@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from models.driver_triggers import DriverTriggersData
+from models.driver_triggers import DriverTriggersData, make_vapi_call
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 
@@ -37,5 +37,14 @@ def get_trip_driverId(driver_id: str):
 
 
 @router.post("/")
-def get_trip_driver_id(request: DriverTriggerRequest):
-    return DriverTriggersData.get_driver_trigger(request.dict())
+async def make_driver_vapi_call(request: DriverTriggerRequest):
+    driver_data = DriverTriggersData.get_driver_trigger(request.dict())
+    # Make the VAPI call and get the returned response data
+    vapi_result = await make_vapi_call(driver_data)
+
+    # Return both success message, driver info, and full VAPI API response
+    return {
+        "message": "Driver call initiated successfully",
+        "driver": driver_data,
+        "vapi_response": vapi_result.get("vapi_response"),
+    }

@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     DITAT_TOKEN: str
     SAMSARA_TOKEN: str
@@ -12,11 +13,11 @@ class Settings(BaseSettings):
     DB_HOST: str | None = None
     DB_NAME: str
     DB_PORT: int
-    
-    # Cloud Run specific settings for Database. 
+
+    # Cloud Run specific settings for Database.
     # For eg: `/cloudsql/agy-intelligence-hub:us-central1:agy-intelligence-hub-instance`
     INSTANCE_UNIX_SOCKET: str | None = None
-    
+
     # Cloud Run URL
     CLOUD_RUN_URL: str = "https://agy-backend-181509438418.us-central1.run.app"
 
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
     # JWT settings
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 24 * 60 # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 24 * 60  # 24 hours
 
     # Slack Bot settings
     SLACK_BOT_TOKEN: str
@@ -36,10 +37,13 @@ class Settings(BaseSettings):
     ALERTS_APPROACH1_SLACK_CHANNEL: str = "#ai-temp-testing"
     ALERTS_APPROACH2_SLACK_CHANNEL: str = "#ai-temp-alerts"
 
-
     # VAPI settings
     VAPI_API_KEY: str = ""
     VAPI_ASSISTANT_ID: str = ""
+
+    VAPI_V_ASSITANT_ID: str = "1561bb4d-b25f-4edd-bcde-b61bd8efd59e"
+    VAPI_V_PHONE_NUMBER_ID: str = "dbf1e2f9-5820-4411-b2e9-b263fdad5aad"
+    VAPI_V_API_KEY: str = "42cd6dd5-a268-42da-a2ba-f4f343ec023c"
 
     # Application settings
     PORT: int = 8000
@@ -49,11 +53,11 @@ class Settings(BaseSettings):
 
     # VAPI Phone Number ID (required for campaigns)
     VAPI_PHONENUMBER_ID: str = ""
-    
+
     # Weather API settings
     WEATHER_API_KEY: str = ""
     WEATHER_API_BASE_URL: str = "http://api.weatherapi.com/v1"
-    
+
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -68,5 +72,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         extra = "ignore"
+
 
 settings = Settings()
