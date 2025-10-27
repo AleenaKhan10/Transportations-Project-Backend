@@ -7,9 +7,9 @@ from sqlalchemy import event
 
 DATABASE_URL = URL.create(
     drivername="postgresql+psycopg2",
-    username="postgres",
+    username="postgres.pglonnvzqjpsqgqkvwtj",
     password="LceL1WNtneKOwdFa",
-    host="db.pglonnvzqjpsqgqkvwtj.supabase.co",
+    host="aws-1-ap-northeast-1.pooler.supabase.com",
     port="5432",
     database="postgres",
 )
