@@ -42,6 +42,7 @@ from services.driver_data import router as drive_data
 
 # from services.driver_triggers import router as driver_triggers
 from services.driver_triggers import router as driver_triggers
+from services.vector_embeddings_service import router as vector_embeddings
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -165,6 +166,7 @@ app.include_router(admin_export_router)
 app.include_router(test_service)
 app.include_router(drive_data)
 app.include_router(driver_triggers)
+app.include_router(vector_embeddings)
 
 # main
 if __name__ == "__main__":
