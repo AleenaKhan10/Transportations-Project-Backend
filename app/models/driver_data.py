@@ -252,34 +252,50 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         # Example: convert payload to VAPI batch call format
         vapi_payload = {
-            # "assistantId": settings.VAPI_ASSISTANT_ID,
-            # "phoneNumberId": getattr(settings, "VAPI_PHONENUMBER_ID", ""),
+            "name": f"Driver Violation Alert - {request.timestamp}",
+            "assistantId": settings.VAPI_V_ASSITANT_ID,
+            "phoneNumberId": settings.VAPI_V_PHONE_NUMBER_ID,
             "customers": [],
         }
 
         # Transform Payload
         for driver in request.drivers:
+            context = {
+                "driverId": driver.driverId,
+                "driverName": driver.driverName,
+                "tripId": driver.violations.tripId,
+                "violations": [
+                    {
+                        "type": v.type,
+                        "description": v.description,
+                        # "severity": v.severity,
+                    }
+                    for v in driver.violations.violationDetails
+                ],
+            }
+
+            # Add customRules if provided
+            if driver.customRules:
+                context["customRules"] = driver.customRules
+
+            # Normalize phone number to E.164 format (+1XXXXXXXXXX)
+            # Remove all non-digit characters
+            phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
+            # Add +1 prefix if not present
+            normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+
             vapi_payload["customers"].append(
                 {
-                    "number": "+12025550100",  # TODO: normalize to +E.164 driver.phoneNumber
+                    "number": normalized_phone,
                     "name": driver.driverName,
                     "assistantOverrides": {
-                        "context": {
-                            "driverId": driver.driverId,
-                            "driverName": driver.driverName,
-                            "tripId": driver.violations.tripId,
-                            "violations": [
-                                {
-                                    "type": v.type,
-                                    "description": v.description,
-                                    # "severity": v.severity,
-                                }
-                                for v in driver.violations.violationDetails
-                            ],
-                        }
+                        "context": context
                     },
                 }
             )
+
+        logger.info(f"📤 VAPI payload prepared with {len(vapi_payload['customers'])} customers")
+        logger.debug(f"Payload: {vapi_payload}")
 
         # Make API call to VAPI campaign endpoint
         async with httpx.AsyncClient() as client:
@@ -287,7 +303,7 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 f"https://api.vapi.ai/campaign",
                 json=vapi_payload,
                 headers={
-                    "Authorization": f"Bearer {settings.VAPI_API_KEY}",
+                    "Authorization": f"Bearer {settings.VAPI_V_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 timeout=30.0,

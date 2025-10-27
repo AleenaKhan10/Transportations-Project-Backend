@@ -18,6 +18,7 @@ class DriverData(BaseModel):
     driverName: str
     phoneNumber: str
     violations: Violations
+    customRules: Optional[str] = None
 
 
 class BatchCallRequest(BaseModel):
