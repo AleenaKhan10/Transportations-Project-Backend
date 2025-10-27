@@ -21,3 +21,8 @@ async def create_call_embeddings(request: TextRequest):
         return {"message": "Embedding stored successfully", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/driver-memory")
+def get_all_memory():
+    return vector_embeddings.DriverMemory.get_all()
