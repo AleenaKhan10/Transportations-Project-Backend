@@ -7,6 +7,8 @@ from models.vapi import BatchCallRequest
 from config import settings
 import httpx
 from fastapi import HTTPException
+import random
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -452,4 +454,165 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         error_details = traceback.format_exc()
         logger.error(f"Error making driver call: {err}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
+
+
+# -------------------------------
+# MAKE VAPI VIOLATION CALL --- IBRAR
+# -------------------------------
+
+
+# ----------------------------------------------
+# Generate Prompt for Each Violation
+# ----------------------------------------------
+def generate_violation_prompt(
+    driver_name: str, violation_text: str, index: int, total: int
+) -> str:
+    """
+    Generates a single prompt for a specific violation.
+    Professional, conversational, and under 250 chars.
+    """
+    first_name = driver_name.split()[0] if driver_name else "Driver"
+
+    greetings = [
+        f"Hello {first_name}, this is your dispatcher.",
+        f"Hi {first_name}, dispatcher here.",
+        f"Good day {first_name}, I’m calling from dispatch.",
+    ]
+
+    intro = random.choice(greetings) if index == 0 else ""
+
+    # Main violation message
+    if total > 1:
+        progress = f"This is alert {index + 1} of {total}. "
+    else:
+        progress = ""
+
+    body = f"{progress}The issue recorded is: {violation_text}. Do you confirm this?"
+
+    closing_options = [
+        "Once confirmed, we’ll move to the next one.",
+        "Please confirm so we can continue.",
+        "Let me know if that’s correct before we continue.",
+    ]
+    closing = random.choice(closing_options)
+
+    prompt = f"{intro} {body} {closing}".strip()
+
+    if len(prompt) > 250:
+        prompt = prompt[:247] + "..."
+
+    return prompt
+
+
+# ----------------------------------------------
+# Generate Final Closing Prompt
+# ----------------------------------------------
+def generate_closing_prompt(driver_name: str) -> str:
+    """Final closing message when all violations are reviewed."""
+    first_name = driver_name.split()[0] if driver_name else "Driver"
+
+    closings = [
+        f"Thanks {first_name}, that covers all the alerts for now. Safe driving out there!",
+        f"Appreciate your time, {first_name}. That’s all for today — drive safe!",
+        f"All set, {first_name}. Thanks for confirming. Have a safe trip ahead!",
+    ]
+
+    return random.choice(closings)
+
+
+# ----------------------------------------------
+# Make Call for Each Violation
+# ----------------------------------------------
+async def make_drivers_violation_call(request):
+    """
+    Process driver violation call.
+    Generates and sends a separate conversational prompt for each violation.
+    Waits for driver response between each prompt (simulated here with async sleep).
+    """
+    try:
+        if not request.drivers or len(request.drivers) == 0:
+            raise HTTPException(status_code=400, detail="No driver data provided")
+
+        driver = request.drivers[0]
+        driver_name = driver.driverName
+        violations = driver.violations.violationDetails or []
+
+        if not violations:
+            raise HTTPException(
+                status_code=400, detail="No violations found for this driver"
+            )
+
+        print(f"📞 Starting step-by-step call flow for {driver_name}")
+
+        # Normalize phone
+        phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
+        # normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = f"+1(219) 200-2826"
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            total = len(violations)
+
+            for index, v in enumerate(violations):
+                # Handle model/dict
+                violation_text = ""
+                if hasattr(v, "description"):
+                    violation_text = v.description
+                elif hasattr(v, "message"):
+                    violation_text = v.message
+                elif isinstance(v, dict):
+                    violation_text = v.get("description") or v.get("message", "")
+                violation_text = violation_text.strip()
+
+                if not violation_text:
+                    continue
+
+                prompt = generate_violation_prompt(
+                    driver_name, violation_text, index, total
+                )
+
+                # Send prompt to webhook
+                payload = {"driverPhoneNumber": normalized_phone, "prompt": prompt}
+                print(f"🚀 Sending prompt {index + 1}/{total}: {prompt}")
+
+                response = await client.post(
+                    "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+                    json=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                response.raise_for_status()
+
+                print(f"✅ Violation {index + 1}/{total} prompt sent successfully")
+
+                # ⏳ Wait for driver response (simulation: 10 seconds)
+                # In production: Wait for webhook callback or VAPI event
+                await asyncio.sleep(4)
+
+            # Final closing message
+            final_prompt = generate_closing_prompt(driver_name)
+            payload = {"driverPhoneNumber": normalized_phone, "prompt": final_prompt}
+            print(f"📞 Sending closing message: {final_prompt}")
+
+            await client.post(
+                "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+                json=payload,
+                headers={"Content-Type": "application/json"},
+            )
+
+        print(f"🎯 Call flow completed for {driver_name}")
+
+        return {
+            "message": "All violation prompts sent successfully",
+            "driver": {
+                "driverId": driver.driverId,
+                "driverName": driver_name,
+                "phoneNumber": normalized_phone,
+            },
+            "prompt": prompt,
+            "totalViolations": len(violations),
+        }
+
+    except Exception as err:
+        print("❌ Error in make_drivers_violation_call:", err)
+        # print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
