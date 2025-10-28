@@ -312,75 +312,64 @@ def generate_conversational_prompt(
     return prompt
 
 
-def generate_conversational_prompt_i(
+def generate_conversational_prompt_ibrar(
     driver_name: str, violations: list, custom_rules: str = ""
 ) -> str:
     """
-    Generate a natural, professional, and conversational dispatcher prompt.
-    The tone is friendly but authoritative, under 250 characters.
-    If multiple violations exist, the agent will confirm each one step by step.
+    Generate a natural, conversational prompt for the VAPI assistant.
+    The assistant will greet the driver, explain the purpose, confirm availability,
+    go through each violation one by one, and close the call gracefully.
+
+    Args:
+        driver_name (str): The name of the driver (e.g., "John Doe")
+        violations (list): A list of violation descriptions or dicts with "description"
+        custom_rules (str, optional): Any custom communication rules or tone adjustments.
+
+    Returns:
+        str: A formatted conversational prompt for the VAPI agent.
     """
-    import random
-
-    first_name = driver_name.split()[0] if driver_name else "Driver"
-
-    # Polished greetings
-    greetings = [
-        f"Hello {first_name}, this is your dispatcher speaking.",
-        f"Good day {first_name}, your dispatcher here.",
-        f"Hi {first_name}, this is dispatch checking in with you.",
-    ]
-
-    opening = random.choice(greetings)
-
-    # Acknowledgment before violations
-    intro_phrases = [
-        "I'd like to review a few updates from your trip.",
-        "I need to quickly go over some alerts from your recent drive.",
-        "Let’s review a few things that came up on your route.",
-    ]
-    intro = random.choice(intro_phrases)
-
-    # Combine violations
-    messages = [
-        v.description if hasattr(v, "description") else v.get("message", "")
-        for v in violations
-    ]
-    messages = [m for m in messages if m.strip()]
-
-    if messages:
-        if len(messages) == 1:
-            # One violation
-            middle = f"The alert I have is: {messages[0]} Do you confirm this?"
+    # Clean violation texts
+    formatted_violations = []
+    for v in violations:
+        if isinstance(v, dict):
+            text = v.get("description") or v.get("message") or ""
         else:
-            # Multiple violations — explain the process
-            middle = (
-                "We’ll go through your alerts one by one. "
-                f"First, {messages[0]} Do you confirm this?"
-            )
-    else:
-        middle = "There are no violations reported at this time."
+            text = str(v)
+        if text.strip():
+            formatted_violations.append(text.strip())
 
-    # Optional rule note
-    if custom_rules and custom_rules.strip():
-        note = f" Also, remember: {custom_rules.strip()}."
-    else:
-        note = ""
+    if not formatted_violations:
+        formatted_violations = ["No specific violations were listed."]
 
-    closing_options = [
-        "Once you confirm, we’ll move to the next one.",
-        "Please confirm, and then we’ll continue.",
-        "Let me know if that’s correct before we continue.",
-    ]
-    closing = random.choice(closing_options)
+    # --- Build conversation flow ---
+    prompt = f"""
+You are a professional dispatcher assistant calling {driver_name}.
+Your goal is to discuss recent driving violations politely and clearly.
 
-    prompt = f"{opening} {intro} {middle} {note} {closing}"
+1. Begin by greeting {driver_name} warmly and introducing yourself as the dispatcher.
+2. Explain that the purpose of this call is to review their recent vehicle or driving violations.
+3. Ask politely if they are available to speak right now.
+4. Once they confirm, go through each violation below one by one:
+"""
 
-    # Keep under 250 chars
-    if len(prompt) > 250:
-        prompt = prompt[:247] + "..."
+    for i, violation in enumerate(formatted_violations, start=1):
+        prompt += f"\n   - Violation {i}: {violation}"
 
-    return prompt
+    prompt += """
+5. After reading each violation, pause and ask the driver to confirm or explain briefly.
+6. Maintain a calm, respectful, and professional tone throughout the conversation.
+7. Once all violations have been discussed, thank the driver sincerely for their time.
+8. End the call gracefully by saying something like:
+   "That’s all for today, drive safe and have a good day."
+
+"""
+
+    if custom_rules:
+        prompt += f"\nAdditional communication rules:\n{custom_rules.strip()}\n"
+
+    prompt += "\nKeep the tone natural, empathetic, and conversational. Avoid robotic phrasing."
+
+    return prompt.strip()
 
 
 async def make_drivers_violation_batch_call(request: BatchCallRequest):
@@ -403,19 +392,19 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
         # normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
-        normalized_phone = f"+1(219) 200-2826"
+        normalized_phone = "+12192002824"
 
         # Generate conversational prompt
-        # prompt = generate_conversational_prompt(
-        #     driver_name=driver.driverName,
-        #     violations=driver.violations.violationDetails,
-        #     custom_rules=driver.customRules or "",
-        # )
-        prompt = generate_conversational_prompt_i(
+        prompt = generate_conversational_prompt(
             driver_name=driver.driverName,
             violations=driver.violations.violationDetails,
             custom_rules=driver.customRules or "",
         )
+        # prompt = generate_conversational_prompt_ibrar(
+        #     driver_name=driver.driverName,
+        #     violations=driver.violations.violationDetails,
+        #     custom_rules=driver.customRules or "",
+        # )
 
         logger.info(f"📞 Calling {driver.driverName} at {normalized_phone}")
         logger.info(f"📝 Prompt ({len(prompt)} chars): {prompt}")
@@ -465,154 +454,175 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 # ----------------------------------------------
 # Generate Prompt for Each Violation
 # ----------------------------------------------
-def generate_violation_prompt(
-    driver_name: str, violation_text: str, index: int, total: int
-) -> str:
-    """
-    Generates a single prompt for a specific violation.
-    Professional, conversational, and under 250 chars.
-    """
-    first_name = driver_name.split()[0] if driver_name else "Driver"
+# def generate_violation_prompt(
+#     driver_name: str, violation_text: str, index: int, total: int
+# ) -> str:
+#     """
+#     Generates a single prompt for a specific violation.
+#     Professional, conversational, and under 250 chars.
+#     """
+#     first_name = driver_name.split()[0] if driver_name else "Driver"
 
-    greetings = [
-        f"Hello {first_name}, this is your dispatcher.",
-        f"Hi {first_name}, dispatcher here.",
-        f"Good day {first_name}, I’m calling from dispatch.",
-    ]
+#     greetings = [
+#         f"Hello {first_name}, this is your dispatcher.",
+#         f"Hi {first_name}, dispatcher here.",
+#         f"Good day {first_name}, I’m calling from dispatch.",
+#     ]
 
-    intro = random.choice(greetings) if index == 0 else ""
+#     intro = random.choice(greetings) if index == 0 else ""
 
-    # Main violation message
-    if total > 1:
-        progress = f"This is alert {index + 1} of {total}. "
-    else:
-        progress = ""
+#     # Main violation message
+#     if total > 1:
+#         progress = f"This is alert {index + 1} of {total}. "
+#     else:
+#         progress = ""
 
-    body = f"{progress}The issue recorded is: {violation_text}. Do you confirm this?"
+#     body = f"{progress}The issue recorded is: {violation_text}. Do you confirm this?"
 
-    closing_options = [
-        "Once confirmed, we’ll move to the next one.",
-        "Please confirm so we can continue.",
-        "Let me know if that’s correct before we continue.",
-    ]
-    closing = random.choice(closing_options)
+#     closing_options = [
+#         "Once confirmed, we’ll move to the next one.",
+#         "Please confirm so we can continue.",
+#         "Let me know if that’s correct before we continue.",
+#     ]
+#     closing = random.choice(closing_options)
 
-    prompt = f"{intro} {body} {closing}".strip()
+#     prompt = f"{intro} {body} {closing}".strip()
 
-    if len(prompt) > 250:
-        prompt = prompt[:247] + "..."
+#     if len(prompt) > 250:
+#         prompt = prompt[:247] + "..."
 
-    return prompt
+#     return prompt
 
 
 # ----------------------------------------------
 # Generate Final Closing Prompt
 # ----------------------------------------------
-def generate_closing_prompt(driver_name: str) -> str:
-    """Final closing message when all violations are reviewed."""
-    first_name = driver_name.split()[0] if driver_name else "Driver"
+# def generate_closing_prompt(driver_name: str) -> str:
+#     """Final closing message when all violations are reviewed."""
+#     first_name = driver_name.split()[0] if driver_name else "Driver"
 
-    closings = [
-        f"Thanks {first_name}, that covers all the alerts for now. Safe driving out there!",
-        f"Appreciate your time, {first_name}. That’s all for today — drive safe!",
-        f"All set, {first_name}. Thanks for confirming. Have a safe trip ahead!",
-    ]
+#     closings = [
+#         f"Thanks {first_name}, that covers all the alerts for now. Safe driving out there!",
+#         f"Appreciate your time, {first_name}. That’s all for today — drive safe!",
+#         f"All set, {first_name}. Thanks for confirming. Have a safe trip ahead!",
+#     ]
 
-    return random.choice(closings)
+#     return random.choice(closings)
 
 
 # ----------------------------------------------
 # Make Call for Each Violation
 # ----------------------------------------------
-async def make_drivers_violation_call(request):
-    """
-    Process driver violation call.
-    Generates and sends a separate conversational prompt for each violation.
-    Waits for driver response between each prompt (simulated here with async sleep).
-    """
-    try:
-        if not request.drivers or len(request.drivers) == 0:
-            raise HTTPException(status_code=400, detail="No driver data provided")
+# async def make_drivers_violation_call(request):
+#     """
+#     Process driver violation call.
+#     Generates and sends a separate conversational prompt for each violation.
+#     Waits for driver response between each prompt (simulated here with async sleep).
+#     Returns all VAPI webhook responses.
+#     """
+#     try:
+#         if not request.drivers or len(request.drivers) == 0:
+#             raise HTTPException(status_code=400, detail="No driver data provided")
 
-        driver = request.drivers[0]
-        driver_name = driver.driverName
-        violations = driver.violations.violationDetails or []
+#         driver = request.drivers[0]
+#         driver_name = driver.driverName
+#         violations = driver.violations.violationDetails or []
 
-        if not violations:
-            raise HTTPException(
-                status_code=400, detail="No violations found for this driver"
-            )
+#         if not violations:
+#             raise HTTPException(
+#                 status_code=400, detail="No violations found for this driver"
+#             )
 
-        print(f"📞 Starting step-by-step call flow for {driver_name}")
+#         print(f"📞 Starting step-by-step call flow for {driver_name}")
 
-        # Normalize phone
-        phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-        # normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
-        normalized_phone = f"+1(219) 200-2826"
+#         # Normalize phone number
+#         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
+#         # normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+#         normalized_phone = "+1 (219) 200-2824"  # Static for now
 
-        async with httpx.AsyncClient(timeout=30) as client:
-            total = len(violations)
+#         webhook_responses = []
 
-            for index, v in enumerate(violations):
-                # Handle model/dict
-                violation_text = ""
-                if hasattr(v, "description"):
-                    violation_text = v.description
-                elif hasattr(v, "message"):
-                    violation_text = v.message
-                elif isinstance(v, dict):
-                    violation_text = v.get("description") or v.get("message", "")
-                violation_text = violation_text.strip()
+#         async with httpx.AsyncClient(timeout=30) as client:
+#             total = len(violations)
 
-                if not violation_text:
-                    continue
+#             for index, v in enumerate(violations):
+#                 # Extract violation text (works for dicts or models)
+#                 if hasattr(v, "description"):
+#                     violation_text = v.description
+#                 elif hasattr(v, "message"):
+#                     violation_text = v.message
+#                 elif isinstance(v, dict):
+#                     violation_text = v.get("description") or v.get("message", "")
+#                 else:
+#                     violation_text = ""
 
-                prompt = generate_violation_prompt(
-                    driver_name, violation_text, index, total
-                )
+#                 violation_text = violation_text.strip()
+#                 if not violation_text:
+#                     continue
 
-                # Send prompt to webhook
-                payload = {"driverPhoneNumber": normalized_phone, "prompt": prompt}
-                print(f"🚀 Sending prompt {index + 1}/{total}: {prompt}")
+#                 # Generate conversational prompt
+#                 prompt = generate_violation_prompt(
+#                     driver_name, violation_text, index, total
+#                 )
 
-                response = await client.post(
-                    "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                response.raise_for_status()
+#                 # Send prompt via webhook
+#                 payload = {"driverPhoneNumber": normalized_phone, "prompt": prompt}
+#                 print(f"🚀 Sending prompt {index + 1}/{total}: {prompt}")
 
-                print(f"✅ Violation {index + 1}/{total} prompt sent successfully")
+#                 response = await client.post(
+#                     "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+#                     json=payload,
+#                     headers={"Content-Type": "application/json"},
+#                 )
+#                 response.raise_for_status()
 
-                # ⏳ Wait for driver response (simulation: 10 seconds)
-                # In production: Wait for webhook callback or VAPI event
-                await asyncio.sleep(4)
+#                 webhook_response = response.json()
+#                 webhook_responses.append(
+#                     {
+#                         "violationIndex": index + 1,
+#                         "prompt": prompt,
+#                         "webhookResponse": webhook_response,
+#                     }
+#                 )
 
-            # Final closing message
-            final_prompt = generate_closing_prompt(driver_name)
-            payload = {"driverPhoneNumber": normalized_phone, "prompt": final_prompt}
-            print(f"📞 Sending closing message: {final_prompt}")
+#                 print(f"✅ Violation {index + 1}/{total} prompt sent successfully")
 
-            await client.post(
-                "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
-                json=payload,
-                headers={"Content-Type": "application/json"},
-            )
+#                 # ⏳ Wait for driver response (simulation: 4 seconds)
+#                 await asyncio.sleep(4)
 
-        print(f"🎯 Call flow completed for {driver_name}")
+#             # Final closing message
+#             final_prompt = generate_closing_prompt(driver_name)
+#             payload = {"driverPhoneNumber": normalized_phone, "prompt": final_prompt}
+#             print(f"📞 Sending closing message: {final_prompt}")
 
-        return {
-            "message": "All violation prompts sent successfully",
-            "driver": {
-                "driverId": driver.driverId,
-                "driverName": driver_name,
-                "phoneNumber": normalized_phone,
-            },
-            "prompt": prompt,
-            "totalViolations": len(violations),
-        }
+#             final_response = await client.post(
+#                 "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+#                 json=payload,
+#                 headers={"Content-Type": "application/json"},
+#             )
+#             final_response.raise_for_status()
 
-    except Exception as err:
-        print("❌ Error in make_drivers_violation_call:", err)
-        # print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
+#             webhook_responses.append(
+#                 {
+#                     "type": "closing",
+#                     "prompt": final_prompt,
+#                     "webhookResponse": final_response.json(),
+#                 }
+#             )
+
+#         print(f"🎯 Call flow completed for {driver_name}")
+
+#         return {
+#             "message": "All violation prompts sent successfully",
+#             "driver": {
+#                 "driverId": driver.driverId,
+#                 "driverName": driver_name,
+#                 "phoneNumber": normalized_phone,
+#             },
+#             "totalViolations": len(violations),
+#             "webhook_responses": webhook_responses,
+#         }
+
+#     except Exception as err:
+#         print("❌ Error in make_drivers_violation_call:", err)
+#         raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")

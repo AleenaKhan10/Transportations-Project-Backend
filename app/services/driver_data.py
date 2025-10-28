@@ -82,6 +82,6 @@ def get_driver_combined(trip_id: str):
 # 6 . make driver violation batch call
 @router.post("/call")
 async def make_driver_violation_call(request: BatchCallRequest):
-    # result = await make_drivers_violation_batch_call(request)
-    result = await make_drivers_violation_call(request)
+    result = await make_drivers_violation_batch_call(request)
+    # result = await make_drivers_violation_call(request)
     return result
