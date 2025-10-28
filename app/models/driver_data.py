@@ -246,88 +246,129 @@ def get_driver_summary(driver_id: str) -> Dict:
 # -------------------------------
 # MAKE VAPI MULTIPLE CALLS - BATCH CALL
 # -------------------------------
-async def make_drivers_violation_batch_call(request: BatchCallRequest):
-    try:
-        logger.info(f"📞 Processing batch VAPI calls for data : {request}")
+def generate_conversational_prompt(driver_name: str, violations: List, custom_rules: str = "") -> str:
+    """
+    Generate a natural, conversational prompt under 250 characters.
+    Includes random greetings, transitions, and natural language elements.
+    """
+    import random
 
-        # Example: convert payload to VAPI batch call format
-        vapi_payload = {
-            "name": f"Driver Violation Alert - {request.timestamp}",
-            "assistantId": settings.VAPI_V_ASSITANT_ID,
-            "phoneNumberId": settings.VAPI_V_PHONE_NUMBER_ID,
-            "customers": [],
+    first_name = driver_name.split()[0] if driver_name else "Driver"
+
+    # Random greetings
+    greetings = [
+        f"Hey {first_name}, how are you doing?",
+        f"Hi {first_name}, hope the road's treating you well!",
+        f"Hello {first_name}, this is your dispatcher.",
+    ]
+
+    # Random transitions
+    transitions = ["Umm, I noticed", "So, checking the data", "Hmm, I see", "Alright, so"]
+
+    # Random closings
+    closings = ["Got a sec?", "Can we chat?", "Let's talk.", "Quick call?"]
+
+    # Build prompt
+    opening = random.choice(greetings)
+
+    # Combine violation messages
+    messages = [v.description for v in violations]
+
+    if messages:
+        if len(messages) == 1:
+            middle = f"{random.choice(transitions)} {messages[0].lower()}"
+        elif len(messages) == 2:
+            middle = f"{random.choice(transitions)} {messages[0].lower()} Also, {messages[1].lower()}"
+        else:
+            # Take first 2 violations to stay under 250 chars
+            middle = f"{random.choice(transitions)} {messages[0].lower()} and {messages[1].lower()}"
+    else:
+        middle = "Just checking in on your trip"
+
+    # Add custom rules as a note
+    if custom_rules and custom_rules.strip():
+        note = f" Note: {custom_rules.strip()}"
+        # Only add if it fits
+        if len(opening + middle + note) < 230:
+            middle += note
+
+    closing = random.choice(closings)
+
+    prompt = f"{opening} {middle} {closing}"
+
+    # Ensure under 250 characters
+    if len(prompt) > 250:
+        prompt = prompt[:247] + "..."
+
+    return prompt
+
+
+async def make_drivers_violation_batch_call(request: BatchCallRequest):
+    """
+    Process driver violation call.
+    Generates conversational prompt and calls the RingCentral webhook.
+    Note: Even though the request has a 'drivers' array, only ONE driver is sent per call.
+    """
+    try:
+        # Get the first (and only) driver from the array
+        if not request.drivers or len(request.drivers) == 0:
+            raise HTTPException(status_code=400, detail="No driver data provided")
+
+        driver = request.drivers[0]  # Only one driver per call
+
+        logger.info(f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})")
+
+        # Normalize phone number to E.164 format
+        phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
+        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+
+        # Generate conversational prompt
+        prompt = generate_conversational_prompt(
+            driver_name=driver.driverName,
+            violations=driver.violations.violationDetails,
+            custom_rules=driver.customRules or ""
+        )
+
+        logger.info(f"📞 Calling {driver.driverName} at {normalized_phone}")
+        logger.info(f"📝 Prompt ({len(prompt)} chars): {prompt}")
+
+        # Call webhook
+        webhook_payload = {
+            "driverPhoneNumber": normalized_phone,
+            "prompt": prompt
         }
 
-        # Transform Payload
-        for driver in request.drivers:
-            context = {
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+                json=webhook_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            webhook_response = response.json()
+
+        logger.info(f"✅ Call initiated successfully for {driver.driverName}")
+
+        return {
+            "message": "Call initiated successfully",
+            "timestamp": request.timestamp,
+            "driver": {
                 "driverId": driver.driverId,
                 "driverName": driver.driverName,
-                "tripId": driver.violations.tripId,
-                "violations": [
-                    {
-                        "type": v.type,
-                        "description": v.description,
-                        # "severity": v.severity,
-                    }
-                    for v in driver.violations.violationDetails
-                ],
-            }
-
-            # Add customRules if provided
-            if driver.customRules:
-                context["customRules"] = driver.customRules
-
-            # Normalize phone number to E.164 format (+1XXXXXXXXXX)
-            # Remove all non-digit characters
-            phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-            # Add +1 prefix if not present
-            normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
-
-            vapi_payload["customers"].append(
-                {
-                    "number": normalized_phone,
-                    "name": driver.driverName,
-                    "assistantOverrides": {
-                        "context": context
-                    },
-                }
-            )
-
-        logger.info(f"📤 VAPI payload prepared with {len(vapi_payload['customers'])} customers")
-        logger.debug(f"Payload: {vapi_payload}")
-
-        # Make API call to VAPI campaign endpoint
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.vapi.ai/campaign",
-                json=vapi_payload,
-                headers={
-                    "Authorization": f"Bearer {settings.VAPI_V_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                timeout=30.0,
-            )
-        if response.status_code != 200:
-            logger.error(f"❌ VAPI API Error: {response.status_code} - {response.text}")
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"VAPI API Error: {response.text}",
-            )
-
-        logger.info("✅ Batch call sent successfully")
-        return {
-            "message": "Batch call payload generated successfully",
-            "vapi_payload": vapi_payload,
-            "vapi_response": response.json(),
+                "phoneNumber": normalized_phone,
+            },
+            "prompt": prompt,
+            "promptLength": len(prompt),
+            "webhook_response": webhook_response
         }
+
+    except HTTPException:
+        raise
     except Exception as err:
         import traceback
-
         error_details = traceback.format_exc()
-        logger.error(f"Error sending batch call: {err}", exc_info=True)
-        return {
-            "message": "Error sending batch call",
-            "error": str(err),
-            "trace": error_details,  # ⚠️ remove this in production
-        }
+        logger.error(f"Error making driver call: {err}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Call error: {str(err)}"
+        )
