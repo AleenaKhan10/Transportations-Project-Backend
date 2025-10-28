@@ -246,7 +246,9 @@ def get_driver_summary(driver_id: str) -> Dict:
 # -------------------------------
 # MAKE VAPI MULTIPLE CALLS - BATCH CALL
 # -------------------------------
-def generate_conversational_prompt(driver_name: str, violations: List, custom_rules: str = "") -> str:
+def generate_conversational_prompt(
+    driver_name: str, violations: List, custom_rules: str = ""
+) -> str:
     """
     Generate a natural, conversational prompt under 250 characters.
     Includes random greetings, transitions, and natural language elements.
@@ -263,7 +265,12 @@ def generate_conversational_prompt(driver_name: str, violations: List, custom_ru
     ]
 
     # Random transitions
-    transitions = ["Umm, I noticed", "So, checking the data", "Hmm, I see", "Alright, so"]
+    transitions = [
+        "Umm, I noticed",
+        "So, checking the data",
+        "Hmm, I see",
+        "Alright, so",
+    ]
 
     # Random closings
     closings = ["Got a sec?", "Can we chat?", "Let's talk.", "Quick call?"]
@@ -303,6 +310,77 @@ def generate_conversational_prompt(driver_name: str, violations: List, custom_ru
     return prompt
 
 
+def generate_conversational_prompt_i(
+    driver_name: str, violations: list, custom_rules: str = ""
+) -> str:
+    """
+    Generate a natural, professional, and conversational dispatcher prompt.
+    The tone is friendly but authoritative, under 250 characters.
+    If multiple violations exist, the agent will confirm each one step by step.
+    """
+    import random
+
+    first_name = driver_name.split()[0] if driver_name else "Driver"
+
+    # Polished greetings
+    greetings = [
+        f"Hello {first_name}, this is your dispatcher speaking.",
+        f"Good day {first_name}, your dispatcher here.",
+        f"Hi {first_name}, this is dispatch checking in with you.",
+    ]
+
+    opening = random.choice(greetings)
+
+    # Acknowledgment before violations
+    intro_phrases = [
+        "I'd like to review a few updates from your trip.",
+        "I need to quickly go over some alerts from your recent drive.",
+        "Let’s review a few things that came up on your route.",
+    ]
+    intro = random.choice(intro_phrases)
+
+    # Combine violations
+    messages = [
+        v.description if hasattr(v, "description") else v.get("message", "")
+        for v in violations
+    ]
+    messages = [m for m in messages if m.strip()]
+
+    if messages:
+        if len(messages) == 1:
+            # One violation
+            middle = f"The alert I have is: {messages[0]} Do you confirm this?"
+        else:
+            # Multiple violations — explain the process
+            middle = (
+                "We’ll go through your alerts one by one. "
+                f"First, {messages[0]} Do you confirm this?"
+            )
+    else:
+        middle = "There are no violations reported at this time."
+
+    # Optional rule note
+    if custom_rules and custom_rules.strip():
+        note = f" Also, remember: {custom_rules.strip()}."
+    else:
+        note = ""
+
+    closing_options = [
+        "Once you confirm, we’ll move to the next one.",
+        "Please confirm, and then we’ll continue.",
+        "Let me know if that’s correct before we continue.",
+    ]
+    closing = random.choice(closing_options)
+
+    prompt = f"{opening} {intro} {middle} {note} {closing}"
+
+    # Keep under 250 chars
+    if len(prompt) > 250:
+        prompt = prompt[:247] + "..."
+
+    return prompt
+
+
 async def make_drivers_violation_batch_call(request: BatchCallRequest):
     """
     Process driver violation call.
@@ -316,33 +394,38 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         driver = request.drivers[0]  # Only one driver per call
 
-        logger.info(f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})")
+        logger.info(
+            f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})"
+        )
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        # normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = f"+1(219) 200-2826"
 
         # Generate conversational prompt
-        prompt = generate_conversational_prompt(
+        # prompt = generate_conversational_prompt(
+        #     driver_name=driver.driverName,
+        #     violations=driver.violations.violationDetails,
+        #     custom_rules=driver.customRules or "",
+        # )
+        prompt = generate_conversational_prompt_i(
             driver_name=driver.driverName,
             violations=driver.violations.violationDetails,
-            custom_rules=driver.customRules or ""
+            custom_rules=driver.customRules or "",
         )
 
         logger.info(f"📞 Calling {driver.driverName} at {normalized_phone}")
         logger.info(f"📝 Prompt ({len(prompt)} chars): {prompt}")
 
         # Call webhook
-        webhook_payload = {
-            "driverPhoneNumber": normalized_phone,
-            "prompt": prompt
-        }
+        webhook_payload = {"driverPhoneNumber": normalized_phone, "prompt": prompt}
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
                 json=webhook_payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             webhook_response = response.json()
@@ -359,16 +442,14 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             },
             "prompt": prompt,
             "promptLength": len(prompt),
-            "webhook_response": webhook_response
+            "webhook_response": webhook_response,
         }
 
     except HTTPException:
         raise
     except Exception as err:
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error making driver call: {err}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Call error: {str(err)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
