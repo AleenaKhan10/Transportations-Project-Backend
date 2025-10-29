@@ -16,7 +16,7 @@ DATABASE_URL = URL.create(
 
 vector_engine = create_engine(
     DATABASE_URL,
-    echo=True,
+    echo=False,
     pool_size=10,
     max_overflow=20,
     pool_pre_ping=True,
