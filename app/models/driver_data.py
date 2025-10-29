@@ -310,23 +310,19 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
         return {
             "trip_id": trip_id,
             "driver_id": driver_id,
-            # Temperature data
             "ditat_set_point": driver_trip.ditatSetPoint,
             "current_temp_c": driver_trip.tempC,
             "current_temp_f": driver_trip.tempF,
-            # Route data
             "out_of_route": driver_trip.outOfRoute,
             "sub_status": driver_trip.subStatusLabel,
             "current_location": current_location,
-            # Fuel data
             "fuel_percent": driver_trip.fuelPercent,
-            # Trailer check
             "trl_check": driver_trip.trlCheck,
-            # Miles tracking
             "miles_driven": miles_driven,
             "start_odometer": active_load.start_odometer_miles if active_load else None,
             "current_odometer": active_load.current_odometer_miles if active_load else None,
         }
+
     except Exception as err:
         logger.error(f"Error fetching trip data: {err}", exc_info=True)
         return {}
@@ -335,120 +331,76 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
 # -------------------------------
 # PERSONALIZED PROMPT BUILDERS
 # -------------------------------
-def build_temperature_violation_prompt(trip_data: Dict, is_first: bool = False) -> str:
-    """Build prompt for temperature not equal to set point."""
+def build_temperature_violation_prompt(trip_data: Dict) -> str:
     set_point = trip_data.get("ditat_set_point")
     current_temp = trip_data.get("current_temp_f")
 
-    intro = "First thing" if is_first else "Next"
-
     if set_point is None or current_temp is None:
-        return f"{intro}, I noticed the temperature isn't at the set point. Can you tell me what's going on?"
+        return "Temperature is not at the set point. Can you tell me why?"
 
-    return (
-        f"{intro}, your temperature is not equal to the ditat set point. "
-        f"Your ditat set point is {set_point}°F and your current vehicle temperature is {current_temp}°F. "
-        f"Can you tell me the reason for this please so I can note it down?"
-    )
+    return f"Temperature set point is {int(set_point)} degrees Fahrenheit but your current temperature is {int(current_temp)} degrees Fahrenheit. Can you tell me why and how you'll fix this?"
 
 
-def build_out_of_route_prompt(trip_data: Dict, is_first: bool = False) -> str:
-    """Build prompt for driver out of route with actual location."""
-    out_of_route = trip_data.get("out_of_route")
-    current_location = trip_data.get("current_location")
+def build_out_of_route_prompt(trip_data: Dict) -> str:
+    location = trip_data.get("current_location")
 
-    intro = "First thing" if is_first else "Next"
-
-    if out_of_route == "🟢":
-        # Driver is actually on route, this might be a false alert
-        return f"{intro}, I wanted to check on your route status. Everything looks good on our end now."
-
-    # Build prompt with location if available
-    if current_location:
-        return (
-            f"{intro}, I have your current location which is {current_location} and you seem to be out of route. "
-            f"Can you tell me the reason on why you chose a different path?"
-        )
+    if location:
+        return f"Your current location is {location} and you are out of route. Can you tell me why you chose a different path?"
     else:
-        return (
-            f"{intro}, according to our system you seem to be out of route. "
-            f"Can you tell me the reason on why you chose a different path?"
-        )
+        return "You are out of route. Can you tell me why you chose a different path?"
 
 
-def build_stopping_200_miles_prompt(trip_data: Dict, is_first: bool = False) -> str:
-    """Build prompt for driver stopping within first 200 miles."""
-    miles_driven = trip_data.get("miles_driven")
+def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
+    miles = trip_data.get("miles_driven")
 
-    intro = "First thing" if is_first else "Next"
+    if miles is not None:
+        return f"You stopped within the first 200 miles. You've driven {int(miles)} miles so far. Can you tell me the reason for this stop?"
 
-    if miles_driven is not None:
-        return (
-            f"{intro}, I noticed you made a stop within the first 200 miles of your trip. "
-            f"You've driven approximately {miles_driven:.1f} miles so far. "
-            f"Can you tell me the reason for this stop?"
-        )
-
-    return (
-        f"{intro}, I noticed you made a stop within the first 200 miles of your trip. "
-        f"Can you tell me the reason for this stop?"
-    )
+    return "You stopped within the first 200 miles. Can you tell me the reason for this stop?"
 
 
-def build_fuel_violation_prompt(trip_data: Dict, is_first: bool = False) -> str:
-    """Build prompt for fuel lower than required percentage."""
-    fuel_percent = trip_data.get("fuel_percent")
-    required_fuel = REQUIRED_FUEL
+def build_fuel_violation_prompt(trip_data: Dict) -> str:
+    fuel = trip_data.get("fuel_percent")
+    required = REQUIRED_FUEL
 
-    intro = "First thing" if is_first else "Next"
+    if fuel is None:
+        return "I need to check your fuel level. What is your current fuel percentage and refueling plan?"
 
-    if fuel_percent is None:
-        return f"{intro}, I wanted to check on your fuel level. Can you let me know your current fuel percentage?"
-
-    return (
-        f"{intro}, I see your fuel level is at {fuel_percent}%, which is below the required {required_fuel}%. "
-        f"Can you tell me your plan for refueling?"
-    )
+    if fuel < required:
+        return f"Your fuel level is at {int(fuel)} percent which is below the required {required} percent. What is your refueling plan?"
+    else:
+        return f"Your fuel level is at {int(fuel)} percent. Please keep monitoring your fuel."
 
 
-def build_trailer_check_prompt(trip_data: Dict, is_first: bool = False) -> str:
-    """Build prompt for trailer check."""
+def build_trailer_check_prompt(trip_data: Dict) -> str:
     trl_check = trip_data.get("trl_check")
 
-    intro = "First thing" if is_first else "Next"
-
     if trl_check == "🔴":
-        return (
-            f"{intro}, I noticed there's a trailer check alert. "
-            f"Can you verify that everything is secure and in good condition with your trailer?"
-        )
+        return "There is a trailer check alert. Can you verify everything is secure with your trailer?"
 
-    return f"{intro}, please perform a trailer check and confirm everything is secure."
+    return "Please perform a trailer check and confirm everything is secure."
 
 
 # -------------------------------
-# SYSTEM PROMPT FOR AI BEHAVIOR (Configure this in VAPI)
+# SYSTEM PROMPT
 # -------------------------------
-SYSTEM_PROMPT = """You are a professional dispatcher calling a truck driver about their trip.
+SYSTEM_PROMPT = """You are a professional dispatcher calling a truck driver.
 
-Start the call by:
-1. Greeting them by name
-2. Identifying yourself as their dispatcher
-3. Briefly stating you have some information about their trip to discuss
-4. Asking if they have a minute to talk and are in a safe place
-5. WAIT for their response before proceeding with the topics below
+HOW TO START:
+Greet them by name, say you're their dispatcher, and ask if they have a minute to talk.
 
-Behavior rules:
-- Be BRIEF and DIRECT - no long explanations
-- After asking about EACH topic, WAIT COMPLETELY for the driver's full response
-- DO NOT repeat yourself or summarize what was already said
-- DO NOT say "let me recap" or "to summarize"
-- Handle ONE topic at a time, waiting for driver's answer before moving to next
-- If driver asks a question, answer it briefly then continue with your topics
-- Keep tone natural, conversational, and professional
-- Do not rush or interrupt the driver
+HOW TO HANDLE THE BULLET POINTS BELOW:
+- Go through each bullet point ONE AT A TIME
+- After you ask about each point, STOP and WAIT for the driver's complete answer
+- Do NOT move to the next point until the driver finishes speaking
+- After they answer, say something like "Okay, next point" then continue
 
-The topics to discuss will be provided in the prompt. Go through them one by one."""
+RULES:
+- Talk like a real person, not a robot
+- Be polite and professional
+- Don't rush the driver
+- Wait completely for their full answer after EACH question
+- If they ask you something, answer briefly then go back to your points"""
 
 
 # -------------------------------
@@ -461,60 +413,38 @@ def generate_enhanced_conversational_prompt(
     trip_data: Dict = None
 ) -> str:
     """
-    Generate an enhanced conversational prompt with actual data.
-    Separates data-driven violations (with discussion) from reminders.
-    Note: Greeting is handled by VAPI system prompt, this only contains the discussion topics.
+    Generate simple bulleted list with data-rich prompts.
+    Only processes violations sent from frontend - no auto-detection.
     """
-    first_name = driver_name.split()[0] if driver_name else "Driver"
+    bullets = []
 
-    prompt_parts = []
-
-    # No greeting here - it's in the system prompt configured in VAPI
-
-    # Process violations with actual data
+    # Process ONLY the violations sent from frontend
     if violations:
-        violation_messages = []
-
-        for idx, violation in enumerate(violations):
-            is_first = (idx == 0)  # Track if this is the first violation
+        for violation in violations:
             v_type = violation.type.lower()
             v_desc = violation.description.lower()
 
-            # Check both type and description for better matching
-            if trip_data:
-                # Use data-driven prompts when trip data is available
+            # Check if this is a reminder type (starts with "Reminder" or contains reminder keywords)
+            if v_type == "reminder" or "reminder" in v_desc.lower():
+                bullets.append(f"• Reminder: {violation.description}")
+            # Build data-driven prompts with actual trip data
+            elif trip_data:
                 if "temperature" in v_type or "temperature" in v_desc or "temp" in v_desc:
-                    violation_messages.append(build_temperature_violation_prompt(trip_data, is_first))
+                    bullets.append(f"• {build_temperature_violation_prompt(trip_data)}")
                 elif "out of route" in v_type or "out of route" in v_desc or "route" in v_desc:
-                    violation_messages.append(build_out_of_route_prompt(trip_data, is_first))
+                    bullets.append(f"• {build_out_of_route_prompt(trip_data)}")
                 elif "200" in v_type or "200" in v_desc or "stopping" in v_type or "stopping" in v_desc or "miles" in v_desc:
-                    violation_messages.append(build_stopping_200_miles_prompt(trip_data, is_first))
+                    bullets.append(f"• {build_stopping_200_miles_prompt(trip_data)}")
                 elif "fuel" in v_type or "fuel" in v_desc:
-                    violation_messages.append(build_fuel_violation_prompt(trip_data, is_first))
+                    bullets.append(f"• {build_fuel_violation_prompt(trip_data)}")
                 elif "trailer" in v_type or "trailer" in v_desc or "trl" in v_desc:
-                    violation_messages.append(build_trailer_check_prompt(trip_data, is_first))
+                    bullets.append(f"• {build_trailer_check_prompt(trip_data)}")
                 else:
-                    # Generic violation message for any other type
-                    intro = "First thing" if is_first else "Next"
-                    violation_messages.append(f"{intro}, {violation.description}")
+                    bullets.append(f"• {violation.description}")
             else:
-                # No trip data available, use generic descriptions
-                intro = "First thing" if is_first else "Next"
-                violation_messages.append(f"{intro}, {violation.description}")
+                bullets.append(f"• {violation.description}")
 
-        if violation_messages:
-            prompt_parts.extend(violation_messages)
-
-    # Add reminders section at the end - keep it brief
-    if reminders and len(reminders) > 0:
-        reminder_texts = ", ".join([r.description.lower().rstrip('.') for r in reminders])
-        prompt_parts.append(f"Also, few reminders: {reminder_texts}.")
-
-    # Join all parts
-    user_prompt = " ".join(prompt_parts)
-
-    # Return just the conversational prompt (system prompt will be sent separately)
-    return user_prompt.strip()
+    return "\n".join(bullets)
 
 
 # -------------------------------
@@ -663,54 +593,17 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             driver_id=driver.driverId
         )
 
-        # Log the fetched trip data for debugging
-        if trip_data:
-            logger.info("✅ Trip data fetched successfully:")
-            logger.info(f"   - Trip ID: {trip_data.get('trip_id')}")
-            logger.info(f"   - Temperature Set Point: {trip_data.get('ditat_set_point')}°F")
-            logger.info(f"   - Current Temperature: {trip_data.get('current_temp_f')}°F")
-            logger.info(f"   - Fuel Percent: {trip_data.get('fuel_percent')}%")
-            logger.info(f"   - Current Location: {trip_data.get('current_location')}")
-            logger.info(f"   - Out of Route: {trip_data.get('out_of_route')}")
-            logger.info(f"   - Miles Driven: {trip_data.get('miles_driven')}")
-        else:
-            logger.warning("⚠️ No trip data available - using generic prompts")
-
-        # Categorize violations into data-driven vs reminders
-        data_driven_violations, reminder_violations = categorize_violations(
-            driver.violations.violationDetails
-        )
-
-        logger.info(f"📊 Found {len(data_driven_violations)} data-driven violations and {len(reminder_violations)} reminders")
-
-        # Log details of each violation for debugging
-        if data_driven_violations:
-            logger.info("Data-driven violations:")
-            for v in data_driven_violations:
-                logger.info(f"  - Type: '{v.type}', Description: '{v.description}'")
-
-        if reminder_violations:
-            logger.info("Reminders:")
-            for r in reminder_violations:
-                logger.info(f"  - Type: '{r.type}', Description: '{r.description}'")
-
-        # Generate enhanced conversational prompt with actual data
+        # Generate prompt with ALL violations sent from frontend (don't categorize)
         prompt = generate_enhanced_conversational_prompt(
             driver_name=driver.driverName,
-            violations=data_driven_violations,
-            reminders=reminder_violations,
+            violations=driver.violations.violationDetails,  # Use ALL violations as-is
+            reminders=[],  # No separate reminders
             trip_data=trip_data
         )
 
         # Add custom rules if provided
         if driver.customRules and driver.customRules.strip():
-            prompt += f" Additionally: {driver.customRules.strip()}"
-
-        logger.info(f"📞 Calling {driver.driverName} at {normalized_phone}")
-        logger.info(f"📝 Generated Prompt ({len(prompt)} chars):")
-        logger.info(f"{'='*80}")
-        logger.info(prompt)
-        logger.info(f"{'='*80}")
+            prompt += f"\n• Custom notes: {driver.customRules.strip()}"
 
         # Call webhook
         webhook_payload = {
@@ -718,60 +611,12 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             "prompt": prompt
         }
 
-        # Print the final payload being sent - FULL DETAILS
-        print("\n" + "=" * 100)
-        print("                    FINAL PAYLOAD TO BE SENT TO DRIVER                    ")
-        print("=" * 100)
-        print(f"\n📋 DRIVER INFORMATION:")
-        print(f"   Name: {driver.driverName}")
-        print(f"   Driver ID: {driver.driverId}")
-        print(f"   Phone: {normalized_phone}")
-        print(f"   Trip ID: {trip_id or 'NOT FOUND'}")
-
-        print(f"\n📊 VIOLATIONS BREAKDOWN:")
-        print(f"   Total Violations: {len(driver.violations.violationDetails)}")
-        print(f"   Data-Driven (with actual data): {len(data_driven_violations)}")
-        print(f"   Reminders (brief): {len(reminder_violations)}")
-
-        if data_driven_violations:
-            print(f"\n   Data-Driven Violations:")
-            for idx, v in enumerate(data_driven_violations, 1):
-                print(f"      {idx}. Type: '{v.type}' | Description: '{v.description}'")
-
-        if reminder_violations:
-            print(f"\n   Reminders:")
-            for idx, r in enumerate(reminder_violations, 1):
-                print(f"      {idx}. Type: '{r.type}' | Description: '{r.description}'")
-
-        print(f"\n🗂️ TRIP DATA FETCHED:")
-        print(f"   Trip Data Available: {'✅ Yes' if trip_data else '❌ No'}")
-        if trip_data:
-            print(f"   Current Location: {trip_data.get('current_location', 'N/A')}")
-            print(f"   Temperature Set Point: {trip_data.get('ditat_set_point', 'N/A')}°F")
-            print(f"   Current Temperature: {trip_data.get('current_temp_f', 'N/A')}°F")
-            print(f"   Fuel Percent: {trip_data.get('fuel_percent', 'N/A')}%")
-            print(f"   Out of Route: {trip_data.get('out_of_route', 'N/A')}")
-            print(f"   Miles Driven: {trip_data.get('miles_driven', 'N/A')}")
-            print(f"   Trailer Check: {trip_data.get('trl_check', 'N/A')}")
-
-        if driver.customRules:
-            print(f"\n📝 CUSTOM RULES: {driver.customRules}")
-
-        print(f"\n🤖 SYSTEM PROMPT (Configure this in VAPI once):")
-        print("-" * 100)
-        print(SYSTEM_PROMPT)
-        print("-" * 100)
-
-        print(f"\n💬 CONVERSATIONAL PROMPT (Length: {len(prompt)} chars):")
-        print("=" * 100)
-        print(prompt)
-        print("=" * 100)
-
-        print(f"\n📦 WEBHOOK PAYLOAD:")
-        print(f"   - driverPhoneNumber: {normalized_phone}")
-        print(f"   - prompt: {len(prompt)} chars")
-        print("=" * 100)
-        print("✅ Payload ready to be sent!\n")
+        # Print only webhook payload
+        print("\n" + "_" * 80)
+        print("webhook_payload")
+        print("_" * 80)
+        print(webhook_payload)
+        print("_" * 80 + "\n")
 
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -794,14 +639,8 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 "tripId": trip_id,
             },
             "prompt": prompt,
-            "promptLength": len(prompt),
-            "violations_summary": {
-                "total": len(driver.violations.violationDetails),
-                "data_driven": len(data_driven_violations),
-                "reminders": len(reminder_violations),
-            },
+            "violations_count": len(driver.violations.violationDetails),
             "trip_data_fetched": bool(trip_data),
-            "trip_data": trip_data if trip_data else {},
             "webhook_response": webhook_response
         }
 
