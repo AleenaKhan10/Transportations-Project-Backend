@@ -9,7 +9,7 @@ class ViolationDetail(BaseModel):
 
 
 class Violations(BaseModel):
-    tripId: str
+    tripId: Optional[str] = None  # Optional - will be fetched automatically from driverId
     violationDetails: List[ViolationDetail]
 
 
