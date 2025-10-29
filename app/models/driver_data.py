@@ -336,7 +336,11 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
     current_temp = trip_data.get("current_temp_f")
 
     if set_point is None or current_temp is None:
-        return "Temperature is not at the set point. Can you tell me why?"
+        return None  # Skip if no data
+
+    # Skip if temperatures are equal
+    if int(set_point) == int(current_temp):
+        return None
 
     return f"Temperature set point is {int(set_point)} degrees Fahrenheit but your current temperature is {int(current_temp)} degrees Fahrenheit. Can you tell me why and how you'll fix this?"
 
@@ -364,12 +368,13 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
     required = REQUIRED_FUEL
 
     if fuel is None:
-        return "I need to check your fuel level. What is your current fuel percentage and refueling plan?"
+        return None  # Skip if no data
 
-    if fuel < required:
-        return f"Your fuel level is at {int(fuel)} percent which is below the required {required} percent. What is your refueling plan?"
-    else:
-        return f"Your fuel level is at {int(fuel)} percent. Please keep monitoring your fuel."
+    # Skip if fuel is at or above required level
+    if fuel >= required:
+        return None
+
+    return f"Your fuel level is at {int(fuel)} percent which is below the required {required} percent. What is your refueling plan?"
 
 
 def build_trailer_check_prompt(trip_data: Dict) -> str:
@@ -415,6 +420,7 @@ def generate_enhanced_conversational_prompt(
     """
     Generate simple bulleted list with data-rich prompts.
     Only processes violations sent from frontend - no auto-detection.
+    Skips violations that don't apply based on actual data.
     """
     bullets = []
 
@@ -423,26 +429,31 @@ def generate_enhanced_conversational_prompt(
         for violation in violations:
             v_type = violation.type.lower()
             v_desc = violation.description.lower()
+            prompt_text = None
 
             # Check if this is a reminder type (starts with "Reminder" or contains reminder keywords)
             if v_type == "reminder" or "reminder" in v_desc.lower():
-                bullets.append(f"• Reminder: {violation.description}")
+                prompt_text = f"Reminder: {violation.description}"
             # Build data-driven prompts with actual trip data
             elif trip_data:
                 if "temperature" in v_type or "temperature" in v_desc or "temp" in v_desc:
-                    bullets.append(f"• {build_temperature_violation_prompt(trip_data)}")
+                    prompt_text = build_temperature_violation_prompt(trip_data)
                 elif "out of route" in v_type or "out of route" in v_desc or "route" in v_desc:
-                    bullets.append(f"• {build_out_of_route_prompt(trip_data)}")
+                    prompt_text = build_out_of_route_prompt(trip_data)
                 elif "200" in v_type or "200" in v_desc or "stopping" in v_type or "stopping" in v_desc or "miles" in v_desc:
-                    bullets.append(f"• {build_stopping_200_miles_prompt(trip_data)}")
+                    prompt_text = build_stopping_200_miles_prompt(trip_data)
                 elif "fuel" in v_type or "fuel" in v_desc:
-                    bullets.append(f"• {build_fuel_violation_prompt(trip_data)}")
+                    prompt_text = build_fuel_violation_prompt(trip_data)
                 elif "trailer" in v_type or "trailer" in v_desc or "trl" in v_desc:
-                    bullets.append(f"• {build_trailer_check_prompt(trip_data)}")
+                    prompt_text = build_trailer_check_prompt(trip_data)
                 else:
-                    bullets.append(f"• {violation.description}")
+                    prompt_text = violation.description
             else:
-                bullets.append(f"• {violation.description}")
+                prompt_text = violation.description
+
+            # Only add if prompt_text is not None (skip filtered violations)
+            if prompt_text:
+                bullets.append(f"• {prompt_text}")
 
     return "\n".join(bullets)
 
