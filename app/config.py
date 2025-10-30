@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     SENTRY_ENVIRONMENT: str = "production"
     SENTRY_TRACES_SAMPLE_RATE: float = 1.0
 
+    OPEN_AI_KEY: str = ""
+
     class Config:
         env_file = ".env"
         extra = "ignore"
