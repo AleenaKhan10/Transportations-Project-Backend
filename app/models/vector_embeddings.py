@@ -107,17 +107,16 @@ class DriverMemory(SQLModel, table=True):
     # -------------------------
     @classmethod
     def similarity_search(cls, driver_id: str, query_text: str, top_k: int = 3):
-        # 1) Get embedding list of floats
+        # 1) Generate embedding for query text
         query_embedding = generate_text_embedding(query_text)
         if not query_embedding:
             raise ValueError("Failed to generate embedding")
 
-        # 2) Build a safe vector literal: [0.1,0.2,...]
-        # Use repr/formatting to avoid scientific notation issues if needed
+        # 2) Build vector literal safely
         embedding_items = (format(x, ".18g") for x in query_embedding)
         embedding_literal = "[" + ",".join(embedding_items) + "]"
 
-        # 3) Put the literal into SQL (cast to extensions.vector)
+        # 3) Add date filter for last 30 days
         sql = text(
             f"""
                 SELECT
@@ -128,13 +127,13 @@ class DriverMemory(SQLModel, table=True):
                     1 - (embedding <=> '{embedding_literal}'::vector) AS similarity
                 FROM driver_memory
                 WHERE driver_id = :driver_id
+                AND date >= NOW() - INTERVAL '30 days'
                 AND (1 - (embedding <=> '{embedding_literal}'::vector)) > 0.5
                 ORDER BY embedding <=> '{embedding_literal}'::vector
                 LIMIT :top_k;
-                """
+            """
         )
 
         with cls.get_session() as session:
-            # pass driver_id and top_k safely as params for the rest
             result = session.execute(sql, {"driver_id": driver_id, "top_k": top_k})
             return [dict(row._mapping) for row in result]
