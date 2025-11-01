@@ -568,10 +568,92 @@ def generate_conversational_prompt(driver_name: str, violations: List, custom_ru
     return prompt
 
 
+async def generate_prompt_for_driver(request):
+    """
+    Generate a prompt for a driver based on triggers/violations.
+    Pulls all relevant data just like the call endpoint, but only returns the prompt.
+    Does NOT send the prompt to any external API.
+
+    Args:
+        request: GeneratePromptRequest with driverId, driverName, phoneNumber, triggers, customRules
+
+    Returns:
+        Dictionary with prompt and metadata
+    """
+    try:
+        from models.vapi import GeneratePromptRequest
+
+        logger.info(f"📝 Generating prompt for driver: {request.driverName} ({request.driverId})")
+
+        # Fetch the latest trip by driverId
+        logger.info(f"🔍 Fetching latest trip for driver: {request.driverId}")
+        driver_trip = DriverTripData.get_latest_by_driver(request.driverId)
+
+        if driver_trip:
+            trip_id = driver_trip.tripId
+            logger.info(f"✅ Found latest tripId: {trip_id}")
+        else:
+            logger.error(f"❌ Could not find any trip for driver: {request.driverId}")
+            trip_id = None
+
+        # Fetch trip data for generating personalized prompts
+        trip_data = get_trip_data_for_violations(
+            trip_id=trip_id or "",
+            driver_id=request.driverId
+        )
+
+        # Generate prompt using the triggers from request
+        # Convert triggers to ViolationDetail objects format for the function
+        from models.vapi import ViolationDetail
+        violation_details = [
+            type('obj', (object,), {'type': trigger.type, 'description': trigger.description})()
+            for trigger in request.triggers
+        ]
+
+        prompt = generate_enhanced_conversational_prompt(
+            driver_name=request.driverName,
+            violations=violation_details,
+            reminders=[],
+            trip_data=trip_data
+        )
+
+        # Add custom rules if provided
+        if request.customRules and request.customRules.strip():
+            prompt += f"\n• Custom notes: {request.customRules.strip()}"
+
+        logger.info(f"✅ Prompt generated successfully for {request.driverName}")
+
+        # Normalize phone number to E.164 format
+        phone_digits = "".join(filter(str.isdigit, request.phoneNumber))
+        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+
+        return {
+            "message": "Prompt generated successfully",
+            "driver": {
+                "driverId": request.driverId,
+                "driverName": request.driverName,
+                "phoneNumber": normalized_phone,
+                "tripId": trip_id,
+            },
+            "prompt": prompt,
+            "triggers_count": len(request.triggers),
+            "trip_data_fetched": bool(trip_data),
+        }
+
+    except Exception as err:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Error generating prompt: {err}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prompt generation error: {str(err)}"
+        )
+
+
 async def make_drivers_violation_batch_call(request: BatchCallRequest):
     """
-    Process driver violation call with enhanced data-driven prompts.
-    Fetches actual trip data and generates personalized prompts with real-time information.
+    Process driver violation call by sending phone number and triggers to webhook.
+    The webhook will handle prompt generation internally.
     Note: Even though the request has a 'drivers' array, only ONE driver is sent per call.
     """
     try:
@@ -587,42 +669,25 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
         normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
 
-        # Always fetch the latest trip by driverId (don't rely on frontend sending tripId)
-        logger.info(f"🔍 Fetching latest trip for driver: {driver.driverId}")
-        driver_trip = DriverTripData.get_latest_by_driver(driver.driverId)
+        # Convert violations to a simple list format for the webhook
+        triggers = [
+            {
+                "type": violation.type,
+                "description": violation.description
+            }
+            for violation in driver.violations.violationDetails
+        ]
 
-        if driver_trip:
-            trip_id = driver_trip.tripId
-            logger.info(f"✅ Found latest tripId: {trip_id}")
-        else:
-            logger.error(f"❌ Could not find any trip for driver: {driver.driverId}")
-            trip_id = None
-
-        # Fetch trip data for generating personalized prompts
-        trip_data = get_trip_data_for_violations(
-            trip_id=trip_id or "",
-            driver_id=driver.driverId
-        )
-
-        # Generate prompt with ALL violations sent from frontend (don't categorize)
-        prompt = generate_enhanced_conversational_prompt(
-            driver_name=driver.driverName,
-            violations=driver.violations.violationDetails,  # Use ALL violations as-is
-            reminders=[],  # No separate reminders
-            trip_data=trip_data
-        )
-
-        # Add custom rules if provided
-        if driver.customRules and driver.customRules.strip():
-            prompt += f"\n• Custom notes: {driver.customRules.strip()}"
-
-        # Call webhook
+        # Call webhook with phone number and triggers (no prompt generation)
         webhook_payload = {
             "driverPhoneNumber": normalized_phone,
-            "prompt": prompt
+            "driverId": driver.driverId,
+            "driverName": driver.driverName,
+            "triggers": triggers,
+            "customRules": driver.customRules
         }
 
-        # Print only webhook payload
+        # Print webhook payload for debugging
         print("\n" + "_" * 80)
         print("webhook_payload")
         print("_" * 80)
@@ -647,11 +712,8 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 "driverId": driver.driverId,
                 "driverName": driver.driverName,
                 "phoneNumber": normalized_phone,
-                "tripId": trip_id,
             },
-            "prompt": prompt,
-            "violations_count": len(driver.violations.violationDetails),
-            "trip_data_fetched": bool(trip_data),
+            "triggers_count": len(triggers),
             "webhook_response": webhook_response
         }
 

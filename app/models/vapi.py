@@ -69,3 +69,12 @@ class DriverCallInsightsUpdate(BaseModel):
     wantsTextInstead: Optional[bool] = None
     recordingUrl: Optional[str] = None
     callSummary: Optional[str] = None
+
+
+# --- Prompt Generation Request Schema ---
+class GeneratePromptRequest(BaseModel):
+    driverId: str
+    driverName: str
+    phoneNumber: str
+    triggers: List[ViolationDetail]
+    customRules: Optional[str] = None
