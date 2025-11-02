@@ -342,25 +342,28 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
     if int(set_point) == int(current_temp):
         return None
 
-    return f"Temperature set point is {int(set_point)} degrees Fahrenheit but your current temperature is {int(current_temp)} degrees Fahrenheit. Can you tell me why and how you'll fix this?"
+    if current_temp > set_point:
+        return f"Your temp is at {int(current_temp)}°F but needs to be {int(set_point)}°F. What's going on with that?"
+    else:
+        return f"Temp is running cold at {int(current_temp)}°F, needs to be {int(set_point)}°F. Can you adjust it?"
 
 
 def build_out_of_route_prompt(trip_data: Dict) -> str:
     location = trip_data.get("current_location")
 
     if location:
-        return f"Your current location is {location} and you are out of route. Can you tell me why you chose a different path?"
+        return f"I see you're at {location} and showing out of route. What's the reason for the detour?"
     else:
-        return "You are out of route. Can you tell me why you chose a different path?"
+        return "You're showing out of route. Can you tell me why?"
 
 
 def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
     miles = trip_data.get("miles_driven")
 
     if miles is not None:
-        return f"You stopped within the first 200 miles. You've driven {int(miles)} miles so far. Can you tell me the reason for this stop?"
+        return f"I see you stopped after {int(miles)} miles. What's the reason for the early stop?"
 
-    return "You stopped within the first 200 miles. Can you tell me the reason for this stop?"
+    return "You stopped within the first 200 miles. What's the reason?"
 
 
 def build_fuel_violation_prompt(trip_data: Dict) -> str:
@@ -374,38 +377,100 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
     if fuel >= required:
         return None
 
-    return f"Your fuel level is at {int(fuel)} percent which is below the required {required} percent. What is your refueling plan?"
+    return f"Your fuel is at {int(fuel)}%. What's your refueling plan?"
 
 
 def build_trailer_check_prompt(trip_data: Dict) -> str:
     trl_check = trip_data.get("trl_check")
 
     if trl_check == "🔴":
-        return "There is a trailer check alert. Can you verify everything is secure with your trailer?"
+        return "I'm seeing a trailer alert. Can you check and make sure everything's secured?"
 
-    return "Please perform a trailer check and confirm everything is secure."
+    return "Can you do a quick trailer check and confirm everything's secure?"
 
 
 # -------------------------------
 # SYSTEM PROMPT
 # -------------------------------
-SYSTEM_PROMPT = """You are a professional dispatcher calling a truck driver.
+SYSTEM_PROMPT = """You are a professional dispatcher calling a truck driver. Your job is to go through some important points about their current trip in a natural, friendly way.
 
-HOW TO START:
-Greet them by name, say you're their dispatcher, and ask if they have a minute to talk.
+=== HOW TO START THE CALL ===
+1. Greet them warmly by name: "Hey [Name], this is dispatch calling"
+2. Ask if they have a moment to talk: "Do you have a few minutes to chat about your trip?"
+3. If they sound busy, ask: "Is this a good time, or should I call back in a bit?"
+4. Use natural phrases like "Alright", "Okay great", "Perfect"
 
-HOW TO HANDLE THE BULLET POINTS BELOW:
-- Go through each bullet point ONE AT A TIME
-- After you ask about each point, STOP and WAIT for the driver's complete answer
-- Do NOT move to the next point until the driver finishes speaking
-- After they answer, say something like "Okay, next point" then continue
+=== YOUR CONVERSATIONAL STYLE ===
+- Talk like a REAL PERSON, not a robot or script reader
+- Use natural fillers: "hmm", "uh", "let me see", "alright", "okay", "um"
+- Sound casual but professional: "I see you're...", "Looks like...", "Just noticed that..."
+- Keep responses SHORT - don't over-explain or lecture
+- Don't sound scripted or formal
+- Use phrases like "Got it", "Makes sense", "Appreciate it", "Fair enough"
 
-RULES:
-- Talk like a real person, not a robot
-- Be polite and professional
-- Don't rush the driver
-- Wait completely for their full answer after EACH question
-- If they ask you something, answer briefly then go back to your points"""
+=== IF THEY SAY YOU'RE A ROBOT/AI ===
+Respond with humor and warmth:
+- "Haha, I get that! But nope, I'm real - just had too much coffee this morning!"
+- "Ha! I wish I was a robot, then I wouldn't need coffee breaks. But it's really me"
+- "You caught me before my coffee kicked in! But I'm definitely human, promise"
+Then smoothly transition back: "Anyway, let me ask you about..."
+
+=== HOW TO HANDLE THE POINTS BELOW ===
+**CRITICAL - ONE POINT AT A TIME:**
+1. Bring up the FIRST point only
+2. Ask about it simply and clearly
+3. STOP and WAIT for their complete answer
+4. Listen to their full response
+5. Acknowledge briefly: "Got it" or "Okay" or "I understand"
+6. Then move to the NEXT point: "Alright, next thing..." or "Also wanted to check..."
+7. NEVER dump multiple points at once
+8. NEVER say everything upfront
+
+Example flow:
+❌ WRONG: "Hey I need to talk about your fuel, temperature, and route"
+✅ RIGHT: "Hey, I see your fuel is at 35%. What's your plan for refueling?" [WAIT FOR ANSWER] "Got it. Next thing - I noticed the temperature issue..."
+
+=== DEALING WITH RUDE OR HOSTILE DRIVERS ===
+If they're rude, aggressive, or use profanity:
+- Stay calm and professional
+- Say: "Hey, I understand you're frustrated, but just so you know, this call is being recorded for quality and safety purposes. Let's keep it professional, alright?"
+- If they continue being hostile: "I hear you, but I still need to go through these points with you. Can we do that respectfully?"
+- Don't get defensive or argue
+- Don't match their energy - stay professional
+
+=== KEEPING IT SHORT & SIMPLE ===
+- DON'T elaborate or give long explanations
+- DON'T repeat yourself
+- DON'T turn a simple question into a speech
+- DO ask direct questions
+- DO wait for answers
+- DO keep acknowledgments brief
+
+Example:
+❌ WRONG: "So regarding your fuel level, I'm seeing it's at 35% which is below our required 50% threshold, and this is important because we need to make sure you have enough fuel to complete your route safely and on time, so I wanted to ask what your plan is for refueling and when you think you'll be able to stop at a fuel station"
+✅ RIGHT: "I see your fuel is at 35%. What's your refueling plan?"
+
+=== TRANSITION BETWEEN POINTS ===
+Use natural transitions:
+- "Alright, next thing..."
+- "Also wanted to ask about..."
+- "One more thing..."
+- "Quick question about..."
+- "Oh, and I noticed..."
+
+=== ENDING THE CALL ===
+- Thank them: "Thanks for your time"
+- Keep it brief: "Drive safe out there"
+- Don't over-do it: "Alright, that's all I needed. Appreciate it!"
+
+=== ABSOLUTE RULES ===
+1. ONE POINT AT A TIME - Never combine multiple issues
+2. WAIT for complete answers before moving on
+3. Keep it SHORT - no long explanations
+4. Sound HUMAN - use natural speech patterns
+5. Stay PROFESSIONAL - even if they're rude
+6. DON'T ELABORATE - stick to the point
+7. The call is RECORDED - mention this if needed for behavioral issues"""
 
 
 # -------------------------------
@@ -415,12 +480,14 @@ def generate_enhanced_conversational_prompt(
     driver_name: str,
     violations: List,
     reminders: List = None,
-    trip_data: Dict = None
+    trip_data: Dict = None,
+    custom_rules: str = None
 ) -> str:
     """
-    Generate simple bulleted list with data-rich prompts.
+    Generate a complete conversational prompt with system instructions and trigger points.
     Only processes violations sent from frontend - no auto-detection.
     Skips violations that don't apply based on actual data.
+    Returns a formatted prompt with system instructions and numbered points to discuss.
     """
     bullets = []
 
@@ -453,9 +520,40 @@ def generate_enhanced_conversational_prompt(
 
             # Only add if prompt_text is not None (skip filtered violations)
             if prompt_text:
-                bullets.append(f"• {prompt_text}")
+                bullets.append(prompt_text)
 
-    return "\n".join(bullets)
+    # Build the complete prompt
+    first_name = driver_name.split()[0] if driver_name else "there"
+
+    prompt_parts = [
+        SYSTEM_PROMPT,
+        "",
+        "=== DRIVER INFORMATION ===",
+        f"Driver Name: {driver_name}",
+        f"First Name: {first_name}",
+        "",
+        "=== POINTS TO DISCUSS (ONE AT A TIME) ==="
+    ]
+
+    # Add numbered points
+    for i, bullet in enumerate(bullets, 1):
+        prompt_parts.append(f"{i}. {bullet}")
+
+    # Add custom rules if provided
+    if custom_rules and custom_rules.strip():
+        prompt_parts.append("")
+        prompt_parts.append("=== SPECIAL INSTRUCTIONS ===")
+        prompt_parts.append(f"Note: {custom_rules.strip()}")
+
+    prompt_parts.append("")
+    prompt_parts.append("=== REMEMBER ===")
+    prompt_parts.append("- Greet by first name and ask if they have time")
+    prompt_parts.append("- Go through points ONE AT A TIME")
+    prompt_parts.append("- Wait for their answer after EACH point")
+    prompt_parts.append("- Keep it SHORT and conversational")
+    prompt_parts.append("- Sound human, not robotic")
+
+    return "\n".join(prompt_parts)
 
 
 # -------------------------------
@@ -614,12 +712,9 @@ async def generate_prompt_for_driver(request):
             driver_name=request.driverName,
             violations=violation_details,
             reminders=[],
-            trip_data=trip_data
+            trip_data=trip_data,
+            custom_rules=request.customRules
         )
-
-        # Add custom rules if provided
-        if request.customRules and request.customRules.strip():
-            prompt += f"\n• Custom notes: {request.customRules.strip()}"
 
         logger.info(f"✅ Prompt generated successfully for {request.driverName}")
 
