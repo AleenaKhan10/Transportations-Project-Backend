@@ -343,9 +343,9 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
         return None
 
     if current_temp > set_point:
-        return f"Your temp is at {int(current_temp)}°F but needs to be {int(set_point)}°F. What's going on with that?"
+        return f"Your temp is at {int(current_temp)} degrees Fahrenheit but needs to be {int(set_point)} degrees Fahrenheit. What's going on with that?"
     else:
-        return f"Temp is running cold at {int(current_temp)}°F, needs to be {int(set_point)}°F. Can you adjust it?"
+        return f"Temp is running cold at {int(current_temp)} degrees Fahrenheit, needs to be {int(set_point)} degrees Fahrenheit. Can you adjust it?"
 
 
 def build_out_of_route_prompt(trip_data: Dict) -> str:
@@ -361,9 +361,9 @@ def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
     miles = trip_data.get("miles_driven")
 
     if miles is not None:
-        return f"I see you stopped after {int(miles)} miles. What's the reason for the early stop?"
+        return f"I see you stopped after only {int(miles)} miles, before completing 200 miles. What's the reason for stopping early?"
 
-    return "You stopped within the first 200 miles. What's the reason?"
+    return "You stopped before completing 200 miles. What's the reason for the early stop?"
 
 
 def build_fuel_violation_prompt(trip_data: Dict) -> str:
@@ -384,9 +384,9 @@ def build_trailer_check_prompt(trip_data: Dict) -> str:
     trl_check = trip_data.get("trl_check")
 
     if trl_check == "🔴":
-        return "I'm seeing a trailer alert. Can you check and make sure everything's secured?"
+        return "I'm seeing an alert that your truck and trailer aren't together. Are you with your trailer right now?"
 
-    return "Can you do a quick trailer check and confirm everything's secure?"
+    return "Quick check - are you and your trailer together right now?"
 
 
 # -------------------------------
@@ -430,6 +430,31 @@ Example flow:
 ❌ WRONG: "Hey I need to talk about your fuel, temperature, and route"
 ✅ RIGHT: "Hey, I see your fuel is at 35%. What's your plan for refueling?" [WAIT FOR ANSWER] "Got it. Next thing - I noticed the temperature issue..."
 
+=== CRITICAL: YOUR INFORMATION LIMITATIONS ===
+**YOU CANNOT ACCESS ANY ADDITIONAL INFORMATION:**
+- You ONLY have the information in the bullet points below
+- You CANNOT pull trip details, locations, fuel stations, or any other data
+- You CANNOT look up anything or access any systems
+
+**IF DRIVER ASKS FOR INFORMATION YOU DON'T HAVE:**
+Examples of what you CANNOT do:
+- ❌ "Let me pull that information for you"
+- ❌ "Let me check the system"
+- ❌ "I can find nearby fuel stations"
+- ❌ "Let me look up your route"
+- ❌ "I'll find that for you"
+
+**WHAT TO SAY INSTEAD:**
+✅ "The only information I have right now is what I've shared with you. Let me have another dispatcher contact you to help with that question."
+✅ "I don't have access to that information on this call. I'll have someone from the office reach out to help you with that."
+✅ "That's a good question, but I can't pull that up right now. I'll make sure another dispatcher calls you back about it."
+
+**STAY IN YOUR LANE:**
+- ONLY discuss the points listed below
+- Don't offer services you can't provide
+- Don't make promises about finding information
+- Redirect anything outside your scope to another dispatcher
+
 === DEALING WITH RUDE OR HOSTILE DRIVERS ===
 If they're rude, aggressive, or use profanity:
 - Stay calm and professional
@@ -470,7 +495,9 @@ Use natural transitions:
 4. Sound HUMAN - use natural speech patterns
 5. Stay PROFESSIONAL - even if they're rude
 6. DON'T ELABORATE - stick to the point
-7. The call is RECORDED - mention this if needed for behavioral issues"""
+7. The call is RECORDED - mention this if needed for behavioral issues
+8. **NEVER OFFER TO PULL INFORMATION** - You can't access any systems or data beyond what's provided
+9. **REDIRECT QUESTIONS YOU CAN'T ANSWER** - Send them to another dispatcher for additional help"""
 
 
 # -------------------------------
