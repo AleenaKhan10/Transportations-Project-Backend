@@ -1,0 +1,5 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest', '-f', 'main.Dockerfile', '.']
+images:
+- 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest'

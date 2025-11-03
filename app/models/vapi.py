@@ -9,7 +9,7 @@ class ViolationDetail(BaseModel):
 
 
 class Violations(BaseModel):
-    tripId: str
+    tripId: Optional[str] = None  # Optional - will be fetched automatically from driverId
     violationDetails: List[ViolationDetail]
 
 
@@ -18,6 +18,7 @@ class DriverData(BaseModel):
     driverName: str
     phoneNumber: str
     violations: Violations
+    customRules: Optional[str] = None
 
 
 class BatchCallRequest(BaseModel):
@@ -68,3 +69,12 @@ class DriverCallInsightsUpdate(BaseModel):
     wantsTextInstead: Optional[bool] = None
     recordingUrl: Optional[str] = None
     callSummary: Optional[str] = None
+
+
+# --- Prompt Generation Request Schema ---
+class GeneratePromptRequest(BaseModel):
+    driverId: str
+    driverName: str
+    phoneNumber: str
+    triggers: List[ViolationDetail]
+    customRules: Optional[str] = None

@@ -5,9 +5,10 @@ from models.driver_data import (
     ViolationAlertDriver,
     get_driver_summary,
     make_drivers_violation_batch_call,
+    generate_prompt_for_driver,
 )
 
-from models.vapi import BatchCallRequest
+from models.vapi import BatchCallRequest, GeneratePromptRequest
 
 # Router with prefix + tags
 router = APIRouter(prefix="/driver_data", tags=["driver_data"])
@@ -82,4 +83,16 @@ def get_driver_combined(trip_id: str):
 @router.post("/call")
 async def make_driver_violation_call(request: BatchCallRequest):
     result = await make_drivers_violation_batch_call(request)
+    return result
+
+
+# 7 . generate prompt for driver based on triggers
+@router.post("/generate-prompt")
+async def generate_prompt(request: GeneratePromptRequest):
+    """
+    Generate a prompt for a driver based on phone number and triggers.
+    This endpoint pulls all relevant driver data and generates a prompt
+    but does NOT send it to any external API - just returns the prompt.
+    """
+    result = await generate_prompt_for_driver(request)
     return result
