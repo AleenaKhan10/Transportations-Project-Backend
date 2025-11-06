@@ -25,6 +25,7 @@ from services.active_load_tracking import router as active_load_tracking_router
 from services.violation_alerts import router as violation_alerts_router
 from services.dispatched_trips import router as dispatched_trips_router
 from services.driver_mapping import router as driver_mapping_router
+from services.driver_trigger_calls_service import router as driver_trigger_calls_router
 
 # Import new admin routers
 from services.admin_users import router as admin_users_router
@@ -165,6 +166,7 @@ app.include_router(admin_export_router)
 app.include_router(test_service)
 app.include_router(drive_data)
 app.include_router(driver_triggers)
+app.include_router(driver_trigger_calls_router)
 
 # main
 if __name__ == "__main__":
