@@ -53,7 +53,12 @@ class DriverTripData(SQLModel, table=True):
         with cls.get_session() as session:
             # Order by tripId descending to get the latest trip
             # You can also add .order_by(cls.lastModified.desc()) if that field exists
-            stmt = select(cls).where(cls.primaryDriverId == driver_id).order_by(cls.tripId.desc()).limit(1)
+            stmt = (
+                select(cls)
+                .where(cls.primaryDriverId == driver_id)
+                .order_by(cls.tripId.desc())
+                .limit(1)
+            )
             return session.exec(stmt).first()
 
     @classmethod
@@ -261,7 +266,7 @@ DATA_DRIVEN_VIOLATIONS = {
     "driver_stopping_200_miles",
     "driver_out_of_route",
     "trailer_check",
-    "fuel_lower_than_required"
+    "fuel_lower_than_required",
 }
 
 REMINDER_VIOLATIONS = {
@@ -270,7 +275,7 @@ REMINDER_VIOLATIONS = {
     "send_seal_pictures",
     "secure_load_pictures",
     "check_destination_bol",
-    "wait_for_approval"
+    "wait_for_approval",
 }
 
 
@@ -299,12 +304,18 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
 
         # Calculate miles driven
         miles_driven = None
-        if active_load and active_load.start_odometer_miles and active_load.current_odometer_miles:
-            miles_driven = active_load.current_odometer_miles - active_load.start_odometer_miles
+        if (
+            active_load
+            and active_load.start_odometer_miles
+            and active_load.current_odometer_miles
+        ):
+            miles_driven = (
+                active_load.current_odometer_miles - active_load.start_odometer_miles
+            )
 
         # Get location from full trip data if available
         current_location = None
-        if trip_full and hasattr(trip_full, 'samsaraLocation'):
+        if trip_full and hasattr(trip_full, "samsaraLocation"):
             current_location = trip_full.samsaraLocation
 
         return {
@@ -320,7 +331,9 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
             "trl_check": driver_trip.trlCheck,
             "miles_driven": miles_driven,
             "start_odometer": active_load.start_odometer_miles if active_load else None,
-            "current_odometer": active_load.current_odometer_miles if active_load else None,
+            "current_odometer": (
+                active_load.current_odometer_miles if active_load else None
+            ),
         }
 
     except Exception as err:
@@ -363,7 +376,9 @@ def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
     if miles is not None:
         return f"I see you stopped after only {int(miles)} miles, before completing 200 miles. What's the reason for stopping early?"
 
-    return "You stopped before completing 200 miles. What's the reason for the early stop?"
+    return (
+        "You stopped before completing 200 miles. What's the reason for the early stop?"
+    )
 
 
 def build_fuel_violation_prompt(trip_data: Dict) -> str:
@@ -390,7 +405,7 @@ def build_trailer_check_prompt(trip_data: Dict) -> str:
 
 
 # -------------------------------
-# SYSTEM PROMPT
+# SYSTEM PROMPTT
 # -------------------------------
 SYSTEM_PROMPT = """You are a professional dispatcher calling a truck driver. Your job is to go through some important points about their current trip in a natural, friendly way.
 
@@ -508,7 +523,7 @@ def generate_enhanced_conversational_prompt(
     violations: List,
     reminders: List = None,
     trip_data: Dict = None,
-    custom_rules: str = None
+    custom_rules: str = None,
 ) -> str:
     """
     Generate a complete conversational prompt with system instructions and trigger points.
@@ -530,11 +545,25 @@ def generate_enhanced_conversational_prompt(
                 prompt_text = f"Reminder: {violation.description}"
             # Build data-driven prompts with actual trip data
             elif trip_data:
-                if "temperature" in v_type or "temperature" in v_desc or "temp" in v_desc:
+                if (
+                    "temperature" in v_type
+                    or "temperature" in v_desc
+                    or "temp" in v_desc
+                ):
                     prompt_text = build_temperature_violation_prompt(trip_data)
-                elif "out of route" in v_type or "out of route" in v_desc or "route" in v_desc:
+                elif (
+                    "out of route" in v_type
+                    or "out of route" in v_desc
+                    or "route" in v_desc
+                ):
                     prompt_text = build_out_of_route_prompt(trip_data)
-                elif "200" in v_type or "200" in v_desc or "stopping" in v_type or "stopping" in v_desc or "miles" in v_desc:
+                elif (
+                    "200" in v_type
+                    or "200" in v_desc
+                    or "stopping" in v_type
+                    or "stopping" in v_desc
+                    or "miles" in v_desc
+                ):
                     prompt_text = build_stopping_200_miles_prompt(trip_data)
                 elif "fuel" in v_type or "fuel" in v_desc:
                     prompt_text = build_fuel_violation_prompt(trip_data)
@@ -559,7 +588,7 @@ def generate_enhanced_conversational_prompt(
         f"Driver Name: {driver_name}",
         f"First Name: {first_name}",
         "",
-        "=== POINTS TO DISCUSS (ONE AT A TIME) ==="
+        "=== POINTS TO DISCUSS (ONE AT A TIME) ===",
     ]
 
     # Add numbered points
@@ -596,21 +625,46 @@ def categorize_violations(violations: List) -> tuple:
 
     # Keywords that indicate data-driven violations
     data_driven_keywords = [
-        "temperature", "temp", "set point", "setpoint",
-        "out of route", "route", "off route",
-        "200 miles", "stopping", "stop",
-        "fuel", "gas",
-        "trailer", "trl", "trailer check"
+        "temperature",
+        "temp",
+        "set point",
+        "setpoint",
+        "out of route",
+        "route",
+        "off route",
+        "200 miles",
+        "stopping",
+        "stop",
+        "fuel",
+        "gas",
+        "trailer",
+        "trl",
+        "trailer check",
     ]
 
     # Keywords that indicate reminders
     reminder_keywords = [
-        "reminder", "remind", "make sure", "verify", "check",
-        "picture", "photo", "image", "send",
-        "load", "pallet", "piece count",
-        "seal", "secured", "secure",
-        "destination", "bol", "bill of lading",
-        "approval", "wait", "permission"
+        "reminder",
+        "remind",
+        "make sure",
+        "verify",
+        "check",
+        "picture",
+        "photo",
+        "image",
+        "send",
+        "load",
+        "pallet",
+        "piece count",
+        "seal",
+        "secured",
+        "secure",
+        "destination",
+        "bol",
+        "bill of lading",
+        "approval",
+        "wait",
+        "permission",
     ]
 
     for violation in violations:
@@ -636,7 +690,9 @@ def categorize_violations(violations: List) -> tuple:
 # -------------------------------
 # MAKE VAPI MULTIPLE CALLS - BATCH CALL (OLD)
 # -------------------------------
-def generate_conversational_prompt(driver_name: str, violations: List, custom_rules: str = "") -> str:
+def generate_conversational_prompt(
+    driver_name: str, violations: List, custom_rules: str = ""
+) -> str:
     """
     Generate a natural, conversational prompt under 250 characters.
     Includes random greetings, transitions, and natural language elements.
@@ -653,7 +709,12 @@ def generate_conversational_prompt(driver_name: str, violations: List, custom_ru
     ]
 
     # Random transitions
-    transitions = ["Umm, I noticed", "So, checking the data", "Hmm, I see", "Alright, so"]
+    transitions = [
+        "Umm, I noticed",
+        "So, checking the data",
+        "Hmm, I see",
+        "Alright, so",
+    ]
 
     # Random closings
     closings = ["Got a sec?", "Can we chat?", "Let's talk.", "Quick call?"]
@@ -708,7 +769,9 @@ async def generate_prompt_for_driver(request):
     try:
         from models.vapi import GeneratePromptRequest
 
-        logger.info(f"📝 Generating prompt for driver: {request.driverName} ({request.driverId})")
+        logger.info(
+            f"📝 Generating prompt for driver: {request.driverName} ({request.driverId})"
+        )
 
         # Fetch the latest trip by driverId
         logger.info(f"🔍 Fetching latest trip for driver: {request.driverId}")
@@ -723,15 +786,19 @@ async def generate_prompt_for_driver(request):
 
         # Fetch trip data for generating personalized prompts
         trip_data = get_trip_data_for_violations(
-            trip_id=trip_id or "",
-            driver_id=request.driverId
+            trip_id=trip_id or "", driver_id=request.driverId
         )
 
         # Generate prompt using the triggers from request
         # Convert triggers to ViolationDetail objects format for the function
         from models.vapi import ViolationDetail
+
         violation_details = [
-            type('obj', (object,), {'type': trigger.type, 'description': trigger.description})()
+            type(
+                "obj",
+                (object,),
+                {"type": trigger.type, "description": trigger.description},
+            )()
             for trigger in request.triggers
         ]
 
@@ -740,14 +807,18 @@ async def generate_prompt_for_driver(request):
             violations=violation_details,
             reminders=[],
             trip_data=trip_data,
-            custom_rules=request.customRules
+            custom_rules=request.customRules,
         )
 
         logger.info(f"✅ Prompt generated successfully for {request.driverName}")
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, request.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = (
+            f"+1{phone_digits}"
+            if not phone_digits.startswith("1")
+            else f"+{phone_digits}"
+        )
 
         return {
             "message": "Prompt generated successfully",
@@ -764,11 +835,11 @@ async def generate_prompt_for_driver(request):
 
     except Exception as err:
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error generating prompt: {err}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail=f"Prompt generation error: {str(err)}"
+            status_code=500, detail=f"Prompt generation error: {str(err)}"
         )
 
 
@@ -785,18 +856,21 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         driver = request.drivers[0]  # Only one driver per call
 
-        logger.info(f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})")
+        logger.info(
+            f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})"
+        )
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = (
+            f"+1{phone_digits}"
+            if not phone_digits.startswith("1")
+            else f"+{phone_digits}"
+        )
 
         # Convert violations to a simple list format for the webhook
         triggers = [
-            {
-                "type": violation.type,
-                "description": violation.description
-            }
+            {"type": violation.type, "description": violation.description}
             for violation in driver.violations.violationDetails
         ]
 
@@ -806,7 +880,7 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             "driverId": driver.driverId,
             "driverName": driver.driverName,
             "triggers": triggers,
-            "customRules": driver.customRules
+            "customRules": driver.customRules,
         }
 
         # Print webhook payload for debugging
@@ -820,7 +894,7 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             response = await client.post(
                 "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
                 json=webhook_payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             webhook_response = response.json()
@@ -836,16 +910,14 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 "phoneNumber": normalized_phone,
             },
             "triggers_count": len(triggers),
-            "webhook_response": webhook_response
+            "webhook_response": webhook_response,
         }
 
     except HTTPException:
         raise
     except Exception as err:
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error making driver call: {err}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Call error: {str(err)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
