@@ -1,0 +1,83 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session
+from typing import Optional
+from uuid import UUID
+from logic.auth.security import create_access_token
+from models.page_access_token_model import PageAccessTokens
+from db.database import engine
+
+router = APIRouter(prefix="/api/page-access-tokens", tags=["page-access-tokens"])
+
+
+class PageAccessTokenService:
+    @staticmethod
+    def create_page_access_token(
+        page_name: str,
+        page_url: str,
+        db: Session
+    ) -> PageAccessTokens:
+        token_data = {"page_name": page_name, "page_url": page_url}
+        jwt_token, _ = create_access_token(token_data)
+
+        new_token = PageAccessTokens(
+            page_name=page_name,
+            page_url=page_url,
+            page_access_token=jwt_token
+        )
+
+        db.add(new_token)
+        db.commit()
+        db.refresh(new_token)
+
+        return new_token
+
+    @staticmethod
+    def get_page_access_token(token_id: UUID, db: Session) -> Optional[PageAccessTokens]:
+        return db.get(PageAccessTokens, token_id)
+
+    @staticmethod
+    def delete_page_access_token(token_id: UUID, db: Session) -> bool:
+        token = db.get(PageAccessTokens, token_id)
+        if token:
+            db.delete(token)
+            db.commit()
+            return True
+        return False
+
+
+# ✅ Must be defined BEFORE the /{token_id} route
+@router.get("/get-all")
+async def get_all_tokens():
+    with Session(engine) as session:
+        try:
+            records = session.query(PageAccessTokens).all()
+            return {"message": "All records fetched successfully", "data": records}
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/")
+async def create_token(page_name: str, page_url: str):
+    with Session(engine) as session:
+        try:
+            token = PageAccessTokenService.create_page_access_token(page_name, page_url, session)
+            return token
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/{token_id}")
+async def get_token(token_id: UUID):
+    with Session(engine) as session:
+        token = PageAccessTokenService.get_page_access_token(token_id, session)
+        if token:
+            return token
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+
+
+@router.delete("/{token_id}")
+async def delete_token(token_id: UUID):
+    with Session(engine) as session:
+        if PageAccessTokenService.delete_page_access_token(token_id, session):
+            return {"message": "Token deleted successfully"}
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")

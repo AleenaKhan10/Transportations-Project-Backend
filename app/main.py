@@ -34,6 +34,7 @@ from services.admin_sessions import router as admin_sessions_router
 from services.admin_audit import router as admin_audit_router
 from services.admin_export import router as admin_export_router
 
+
 # new test router
 from services.test_service import router as test_service
 
@@ -42,6 +43,7 @@ from services.driver_data import router as drive_data
 
 # from services.driver_triggers import router as driver_triggers
 from services.driver_triggers import router as driver_triggers
+from services.page_access_token_service import router as page_access_token
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -165,6 +167,7 @@ app.include_router(admin_export_router)
 app.include_router(test_service)
 app.include_router(drive_data)
 app.include_router(driver_triggers)
+app.include_router(page_access_token)
 
 # main
 if __name__ == "__main__":
