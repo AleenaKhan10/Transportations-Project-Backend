@@ -44,8 +44,6 @@ class PageAccessTokenService:
             return True
         return False
 
-
-# ✅ Must be defined BEFORE the /{token_id} route
 @router.get("/get-all")
 async def get_all_tokens():
     with Session(engine) as session:
@@ -81,3 +79,35 @@ async def delete_token(token_id: UUID):
         if PageAccessTokenService.delete_page_access_token(token_id, session):
             return {"message": "Token deleted successfully"}
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
+
+@router.post("/verify-token")
+async def verify_token(page_access_token: str):
+    """
+    Verify if a given token exists in the database.
+    """
+    with Session(engine) as session:
+        try:
+            token_record = session.query(PageAccessTokens).filter(
+                PageAccessTokens.page_access_token == page_access_token
+            ).first()
+
+            if token_record:
+                return {
+                    "valid": True,
+                    "message": "Token verified successfully",
+                    "data": {
+                        "page_name": token_record.page_name,
+                        "page_url": token_record.page_url,
+                        "id": str(token_record.id),
+                    },
+                }
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token"
+                )
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
+            )
