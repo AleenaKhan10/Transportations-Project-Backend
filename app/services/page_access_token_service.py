@@ -5,9 +5,14 @@ from uuid import UUID
 from logic.auth.security import create_access_token
 from models.page_access_token_model import PageAccessTokens
 from db.database import engine
+from pydantic import BaseModel
+
 
 router = APIRouter(prefix="/api/page-access-tokens", tags=["page-access-tokens"])
 
+class PageAccessTokenRequest(BaseModel):
+    page_name: str
+    page_url: str
 
 class PageAccessTokenService:
     @staticmethod
@@ -55,10 +60,14 @@ async def get_all_tokens():
 
 
 @router.post("/")
-async def create_token(page_name: str, page_url: str):
+async def create_token(payload: PageAccessTokenRequest):
     with Session(engine) as session:
         try:
-            token = PageAccessTokenService.create_page_access_token(page_name, page_url, session)
+            token = PageAccessTokenService.create_page_access_token(
+                payload.page_name,
+                payload.page_url,
+                session
+            )
             return token
         except Exception as e:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
