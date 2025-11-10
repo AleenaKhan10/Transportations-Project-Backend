@@ -111,10 +111,11 @@ async def verify_token(page_access_token: str):
                     },
                 }
             else:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or expired token"
-                )
+                return{
+                    "valid" : False,
+                    "message": "",
+                    "data": None
+                }
 
         except Exception as e:
             raise HTTPException(
