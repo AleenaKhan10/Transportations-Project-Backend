@@ -16,8 +16,6 @@ router = APIRouter(prefix="/api", dependencies=[Depends(get_current_user)])
 router_no_auth = APIRouter(prefix="/api")
 
 
-
-
 @router.post("/vapi-call/{driver_id}")
 async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
     """
@@ -32,7 +30,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": "Driver ID is required",
                     "status": "validation_error",
-                }
+                },
             )
 
         # Retrieve driver information
@@ -44,7 +42,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": "Driver not found",
                     "status": "driver_not_found",
-                }
+                },
             )
 
         # Validate driver has phone number
@@ -54,14 +52,16 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": "Driver phone number is required for VAPI call",
                     "status": "missing_phone_number",
-                }
+                },
             )
 
-        logger.info(f"📞 Initiating VAPI call to driver: {driver.firstName} {driver.lastName} ({driver_id})")
+        logger.info(
+            f"📞 Initiating VAPI call to driver: {driver.firstName} {driver.lastName} ({driver_id})"
+        )
 
         # Convert driver to dict for VAPI client
         driver_dict = driver.model_dump()
-        
+
         # If body data is provided, add it to the driver dict
         if body:
             vapi_data = body.model_dump(exclude_none=True)
@@ -93,7 +93,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": str(error),
                     "status": "vapi_api_error",
-                }
+                },
             )
         elif "Network error" in str(error):
             raise HTTPException(
@@ -101,7 +101,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": str(error),
                     "status": "network_error",
-                }
+                },
             )
         elif "environment variable" in str(error):
             raise HTTPException(
@@ -109,7 +109,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": "VAPI configuration error",
                     "status": "configuration_error",
-                }
+                },
             )
         else:
             raise HTTPException(
@@ -117,7 +117,7 @@ async def make_vapi_call(driver_id: str, body: Optional[VAPIData] = None):
                 detail={
                     "error": str(error),
                     "status": "internal_error",
-                }
+                },
             )
 
 
@@ -136,14 +136,17 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                 detail={
                     "error": "driverIds must be a non-empty array",
                     "status": "validation_error",
-                }
+                },
             )
 
-        logger.info(f"📞 Processing batch VAPI calls for {len(driver_ids)} driver(s): {', '.join(driver_ids)}")
+        logger.info(
+            f"📞 Processing batch VAPI calls for {len(driver_ids)} driver(s): {', '.join(driver_ids)}"
+        )
 
         # Get all drivers by IDs
         with Driver.get_session() as session:
             from sqlmodel import select
+
             statement = select(Driver).where(Driver.driverId.in_(driver_ids))
             drivers = session.exec(statement).all()
 
@@ -163,17 +166,23 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                     "error": "No valid drivers found",
                     "status": "no_valid_drivers",
                     "invalidDriverIds": invalid_driver_ids,
-                }
+                },
             )
 
         # Validate all valid drivers have phone numbers
-        drivers_without_phone = [driver for driver in valid_drivers if not driver.phoneNumber]
+        drivers_without_phone = [
+            driver for driver in valid_drivers if not driver.phoneNumber
+        ]
         if drivers_without_phone:
             drivers_without_phone_ids = [d.driverId for d in drivers_without_phone]
-            logger.warning(f"⚠️ Drivers without phone numbers: {', '.join(drivers_without_phone_ids)}")
+            logger.warning(
+                f"⚠️ Drivers without phone numbers: {', '.join(drivers_without_phone_ids)}"
+            )
 
             # Filter out drivers without phone numbers
-            drivers_with_phone = [driver for driver in valid_drivers if driver.phoneNumber]
+            drivers_with_phone = [
+                driver for driver in valid_drivers if driver.phoneNumber
+            ]
 
             if not drivers_with_phone:
                 raise HTTPException(
@@ -181,8 +190,9 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                     detail={
                         "error": "No drivers with valid phone numbers found",
                         "status": "no_valid_phone_numbers",
-                        "invalidDriverIds": invalid_driver_ids + drivers_without_phone_ids,
-                    }
+                        "invalidDriverIds": invalid_driver_ids
+                        + drivers_without_phone_ids,
+                    },
                 )
 
             # Update arrays to reflect phone number filtering
@@ -191,19 +201,25 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
 
         logger.info(f"✅ Found {len(valid_drivers)} valid driver(s) for VAPI campaign")
         for driver in valid_drivers:
-            logger.info(f"   • {driver.firstName} {driver.lastName} ({driver.driverId}) - {driver.phoneNumber}")
+            logger.info(
+                f"   • {driver.firstName} {driver.lastName} ({driver.driverId}) - {driver.phoneNumber}"
+            )
 
         # Convert drivers to dicts and add VAPI data if provided
         driver_dicts = []
         for driver in valid_drivers:
             driver_dict = driver.model_dump()
-            
+
             # If vapiData is provided for this driver, add it
             if request.vapiData and driver.driverId in request.vapiData:
-                vapi_data = request.vapiData[driver.driverId].model_dump(exclude_none=True)
+                vapi_data = request.vapiData[driver.driverId].model_dump(
+                    exclude_none=True
+                )
                 driver_dict.update({"vapi_data": vapi_data})
-                logger.info(f"📋 Using provided VAPI data for driver {driver.driverId}: {vapi_data}")
-            
+                logger.info(
+                    f"📋 Using provided VAPI data for driver {driver.driverId}: {vapi_data}"
+                )
+
             driver_dicts.append(driver_dict)
 
         # Use VAPI client with multiple drivers (single campaign)
@@ -212,12 +228,14 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
         # Return comprehensive response with driver details
         driver_details = []
         for driver in valid_drivers:
-            driver_details.append({
-                "driverId": driver.driverId,
-                "phoneNumber": driver.phoneNumber,
-                "driverName": f"{driver.firstName} {driver.lastName}",
-            })
-        
+            driver_details.append(
+                {
+                    "driverId": driver.driverId,
+                    "phoneNumber": driver.phoneNumber,
+                    "driverName": f"{driver.firstName} {driver.lastName}",
+                }
+            )
+
         return {
             "success": True,
             "campaignId": vapi_response["campaignId"],
@@ -243,7 +261,7 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                 detail={
                     "error": str(error),
                     "status": "vapi_api_error",
-                }
+                },
             )
         elif "Network error" in str(error):
             raise HTTPException(
@@ -251,7 +269,7 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                 detail={
                     "error": str(error),
                     "status": "network_error",
-                }
+                },
             )
         elif "environment variable" in str(error):
             raise HTTPException(
@@ -259,7 +277,7 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                 detail={
                     "error": "VAPI configuration error",
                     "status": "configuration_error",
-                }
+                },
             )
         else:
             raise HTTPException(
@@ -267,7 +285,7 @@ async def make_vapi_calls_to_multiple_drivers(request: VAPICallRequest):
                 detail={
                     "error": str(error),
                     "status": "batch_vapi_error",
-                }
+                },
             )
 
 
@@ -296,18 +314,20 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
 
         if not driver:
             raise HTTPException(
-                status_code=404,
-                detail=f"Driver not found with ID: {driver_id}"
+                status_code=404, detail=f"Driver not found with ID: {driver_id}"
             )
 
         if not driver.phoneNumber:
             raise HTTPException(
                 status_code=400,
-                detail=f"Driver {driver_id} has no phone number in database"
+                detail=f"Driver {driver_id} has no phone number in database",
             )
 
         phone_number = driver.phoneNumber
-        driver_name = f"{driver.firstName or ''} {driver.lastName or ''}".strip() or "Unknown Driver"
+        driver_name = (
+            f"{driver.firstName or ''} {driver.lastName or ''}".strip()
+            or "Unknown Driver"
+        )
 
         # Use VAPI API key from environment
         vapi_api_key = settings.VAPI_V_API_KEY
@@ -315,10 +335,17 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
         if not vapi_api_key:
             raise HTTPException(status_code=500, detail="VAPI API key not configured")
 
-        logger.info(f"📞 Fetching VAPI calls for driver {driver_id} ({driver_name}) - Phone: {phone_number}")
+        logger.info(
+            f"📞 Fetching VAPI calls for driver {driver_id} ({driver_name}) - Phone: {phone_number}"
+        )
 
         # Normalize phone number
-        normalized_phone = phone_number.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        normalized_phone = (
+            phone_number.replace(" ", "")
+            .replace("-", "")
+            .replace("(", "")
+            .replace(")", "")
+        )
         if not normalized_phone.startswith("+"):
             normalized_phone = f"+1{normalized_phone}"
 
@@ -328,20 +355,24 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                 "https://api.vapi.ai/call",
                 headers={
                     "Authorization": f"Bearer {vapi_api_key}",
-                    "Content-Type": "application/json"
-                }
+                    "Content-Type": "application/json",
+                },
             )
 
             if response.status_code >= 400:
-                logger.error(f"❌ VAPI API Error: {response.status_code} - {response.text}")
+                logger.error(
+                    f"❌ VAPI API Error: {response.status_code} - {response.text}"
+                )
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"VAPI API Error: {response.text}"
+                    detail=f"VAPI API Error: {response.text}",
                 )
 
             calls_data = response.json()
 
-        logger.info(f"✅ Retrieved {len(calls_data) if isinstance(calls_data, list) else 'unknown'} total calls from VAPI")
+        logger.info(
+            f"✅ Retrieved {len(calls_data) if isinstance(calls_data, list) else 'unknown'} total calls from VAPI"
+        )
 
         # Import here to avoid circular imports
         from sqlmodel import Session, text
@@ -364,11 +395,20 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                     # Skip calls with empty phone number
                     if not call_phone or call_phone.strip() == "":
                         empty_phone_skipped += 1
-                        logger.debug(f"⏭️ Skipping call with empty phone: {call.get('id')}")
+                        logger.debug(
+                            f"⏭️ Skipping call with empty phone: {call.get('id')}"
+                        )
                         continue
 
                     # Match phone number (with or without +1, spaces, etc.)
-                    if normalized_phone in call_phone or call_phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "") in normalized_phone:
+                    if (
+                        normalized_phone in call_phone
+                        or call_phone.replace(" ", "")
+                        .replace("-", "")
+                        .replace("(", "")
+                        .replace(")", "")
+                        in normalized_phone
+                    ):
                         call_id = call.get("id")
 
                         # Determine if call was picked up
@@ -376,7 +416,11 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                         transcript_messages = call.get("messages", [])
                         if transcript_messages:
                             # If there are user messages (not just system/bot), call was picked up
-                            user_messages = [m for m in transcript_messages if m.get("role") == "user"]
+                            user_messages = [
+                                m
+                                for m in transcript_messages
+                                if m.get("role") == "user"
+                            ]
                             call_picked_up = len(user_messages) > 0
 
                         # Format call data with ALL available fields
@@ -385,7 +429,9 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                             "driver_id": driver_id,
                             "driver_name": driver_name,
                             "phone_number": call_phone,
-                            "status": call.get("status"),  # ended, in-progress, queued, etc.
+                            "status": call.get(
+                                "status"
+                            ),  # ended, in-progress, queued, etc.
                             "call_picked_up": call_picked_up,
                             "transcript": transcript_messages,
                             "summary": call.get("summary"),
@@ -403,8 +449,10 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                         if save_to_db and call_id:
                             # Check if call already exists
                             result = session.execute(
-                                text("SELECT 1 FROM dev.driver_triggers_calls WHERE call_id = :call_id LIMIT 1"),
-                                {"call_id": call_id}
+                                text(
+                                    "SELECT 1 FROM dev.driver_triggers_calls WHERE call_id = :call_id LIMIT 1"
+                                ),
+                                {"call_id": call_id},
                             ).fetchone()
 
                             if result:
@@ -414,7 +462,11 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                                 # Insert new call with complete data
                                 try:
                                     # Convert transcript to JSON string for storage
-                                    transcript_json = json.dumps(transcript_messages) if transcript_messages else "[]"
+                                    transcript_json = (
+                                        json.dumps(transcript_messages)
+                                        if transcript_messages
+                                        else "[]"
+                                    )
 
                                     # Parse timestamps
                                     started_at_parsed = None
@@ -423,21 +475,30 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                                     if call.get("startedAt"):
                                         try:
                                             from dateutil import parser as date_parser
-                                            started_at_parsed = date_parser.parse(call.get("startedAt"))
+
+                                            started_at_parsed = date_parser.parse(
+                                                call.get("startedAt")
+                                            )
                                         except:
                                             started_at_parsed = None
 
                                     if call.get("endedAt"):
                                         try:
                                             from dateutil import parser as date_parser
-                                            ended_at_parsed = date_parser.parse(call.get("endedAt"))
+
+                                            ended_at_parsed = date_parser.parse(
+                                                call.get("endedAt")
+                                            )
                                         except:
                                             ended_at_parsed = None
 
-                                    logger.info(f"🔄 Inserting call {call_id} to database...")
+                                    logger.info(
+                                        f"🔄 Inserting call {call_id} to database..."
+                                    )
 
                                     session.execute(
-                                        text("""
+                                        text(
+                                            """
                                         INSERT INTO dev.driver_triggers_calls
                                         (id, driver_id, driver_name, call_summary, call_id, phone, call_duration,
                                          call_status, transcript, recording_url, started_at, ended_at,
@@ -445,7 +506,8 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                                         VALUES (:id, :driver_id, :driver_name, :call_summary, :call_id, :phone, :call_duration,
                                                 :call_status, :transcript, :recording_url, :started_at, :ended_at,
                                                 :call_picked_up, :ended_reason, :created_at, :updated_at)
-                                        """),
+                                        """
+                                        ),
                                         {
                                             "id": str(uuid.uuid4()),
                                             "driver_id": driver_id,
@@ -462,21 +524,28 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
                                             "call_picked_up": call_picked_up,
                                             "ended_reason": call.get("endedReason"),
                                             "created_at": datetime.utcnow(),
-                                            "updated_at": datetime.utcnow()
-                                        }
+                                            "updated_at": datetime.utcnow(),
+                                        },
                                     )
                                     new_calls_saved += 1
-                                    logger.info(f"✅ Saved call to DB: {call_id} | Status: {call.get('status')} | Picked up: {call_picked_up}")
+                                    logger.info(
+                                        f"✅ Saved call to DB: {call_id} | Status: {call.get('status')} | Picked up: {call_picked_up}"
+                                    )
                                 except Exception as db_error:
-                                    logger.error(f"❌ Error saving call {call_id}: {str(db_error)}")
+                                    logger.error(
+                                        f"❌ Error saving call {call_id}: {str(db_error)}"
+                                    )
                                     import traceback
+
                                     logger.error(traceback.format_exc())
                                     # Continue with other calls even if one fails
 
                 # Commit all inserts
                 if save_to_db:
                     session.commit()
-                    logger.info(f"💾 Database save complete: {new_calls_saved} new, {existing_calls_skipped} skipped, {empty_phone_skipped} empty phones")
+                    logger.info(
+                        f"💾 Database save complete: {new_calls_saved} new, {existing_calls_skipped} skipped, {empty_phone_skipped} empty phones"
+                    )
 
         return {
             "success": True,
@@ -487,7 +556,7 @@ async def fetch_vapi_calls_by_driver_id(driver_id: str, save_to_db: bool = True)
             "new_calls_saved": new_calls_saved if save_to_db else 0,
             "existing_calls_skipped": existing_calls_skipped if save_to_db else 0,
             "empty_phone_skipped": empty_phone_skipped,
-            "calls": formatted_calls
+            "calls": formatted_calls,
         }
 
     except HTTPException:
@@ -503,7 +572,7 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
     Update driver call insights from VAPI call results
     """
     logger.info("VAPI CALLING THIS CONTROLLER")
-    
+
     try:
         logger.info(
             f"{update_data.driverId}, {update_data.tripId}, {update_data.currentLocation}, "
@@ -515,18 +584,18 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
         # Find driver morning report by tripId
         with DriverMorningReport.get_session() as session:
             from sqlmodel import select
-            statement = select(DriverMorningReport).where(DriverMorningReport.tripId == update_data.tripId)
+
+            statement = select(DriverMorningReport).where(
+                DriverMorningReport.tripId == update_data.tripId
+            )
             driver_report = session.exec(statement).first()
-            
+
             logger.info(f"REPORT => {driver_report}")
 
             if not driver_report:
                 raise HTTPException(
                     status_code=400,
-                    detail={
-                        "success": False,
-                        "message": "No Report Found"
-                    }
+                    detail={"success": False, "message": "No Report Found"},
                 )
 
             if update_data.eta is not None:
@@ -540,7 +609,7 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
             if update_data.callSummary is not None:
                 driver_report.ETA_Notes_1 = update_data.callSummary
             driver_report.callStatus = 1
-            # Note: preferredCallbackTime, wantsTextInstead, recordingUrl fields 
+            # Note: preferredCallbackTime, wantsTextInstead, recordingUrl fields
             # are not in the current DriverMorningReport model
 
             session.add(driver_report)
@@ -560,7 +629,7 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
                 "preferredCallbackTime": update_data.preferredCallbackTime,
                 "wantsTextInstead": update_data.wantsTextInstead,
                 "recordingUrl": update_data.recordingUrl,
-                "callSummary": update_data.callSummary
+                "callSummary": update_data.callSummary,
             },
         }
 
@@ -574,5 +643,8 @@ async def update_driver_call_insights(update_data: DriverCallInsightsUpdate):
                 "success": False,
                 "message": "Internal server error.",
                 "error": str(error),
-            }
+            },
         )
+
+
+# IBRAR CODE
