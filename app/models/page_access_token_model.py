@@ -9,5 +9,8 @@ class PageAccessTokens(SQLModel, table=True):
     id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
     page_name: str = Field(nullable=False)
     page_url: str = Field(nullable=False)
-    page_access_token: str = Field(nullable=False, unique=True)
+    description: Optional[str] = Field(default=None, nullable=True)  # new optional field
+    category: Optional[str] = Field(default=None, nullable=True)     # new optional field
+    page_access_token: Optional[str] = Field(default=None, nullable=True, unique=True)  # token can be null now
+    filter: Optional[str] = Field(default=None, nullable=True)       # new filter field
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)

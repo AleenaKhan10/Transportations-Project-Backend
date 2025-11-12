@@ -7,7 +7,6 @@ from models.page_access_token_model import PageAccessTokens
 from db.database import engine
 from pydantic import BaseModel
 
-
 router = APIRouter(prefix="/api/page-access-tokens", tags=["page-access-tokens"])
 
 # -----------------------------
@@ -16,7 +15,7 @@ router = APIRouter(prefix="/api/page-access-tokens", tags=["page-access-tokens"]
 class PageAccessTokenRequest(BaseModel):
     page_name: str
     page_url: str
-
+    filter: Optional[str] = None  # new optional field
 
 # -----------------------------
 # Service Layer
@@ -26,32 +25,31 @@ class PageAccessTokenService:
     def create_or_update_page_access_token(
         page_name: str,
         page_url: str,
-        db: Session
+        db: Session,
+        filter: Optional[str] = None
     ) -> PageAccessTokens:
         """
-        If record with same page_name & page_url exists → update its token.
-        If not → create new record.
+        Create or update token considering page_name, page_url, and optional filter.
         """
         existing_record = db.query(PageAccessTokens).filter(
             PageAccessTokens.page_name == page_name,
-            PageAccessTokens.page_url == page_url
+            PageAccessTokens.page_url == page_url,
+            PageAccessTokens.filter == filter  # check filter too
         ).first()
 
-        # Always generate a fresh token
-        token_data = {"page_name": page_name, "page_url": page_url}
+        token_data = {"page_name": page_name, "page_url": page_url, "filter": filter}
         jwt_token, _ = create_access_token(token_data)
 
         if existing_record:
-            # ✅ Update existing token only
             existing_record.page_access_token = jwt_token
             db.commit()
             db.refresh(existing_record)
             return existing_record
 
-        # ✅ Otherwise create a new record
         new_token = PageAccessTokens(
             page_name=page_name,
             page_url=page_url,
+            filter=filter,
             page_access_token=jwt_token
         )
         db.add(new_token)
@@ -65,9 +63,6 @@ class PageAccessTokenService:
 
     @staticmethod
     def nullify_token_only(token_id: UUID, db: Session) -> bool:
-        """
-        Set page_access_token to None instead of deleting record.
-        """
         token_record = db.get(PageAccessTokens, token_id)
         if token_record:
             token_record.page_access_token = None
@@ -75,16 +70,12 @@ class PageAccessTokenService:
             return True
         return False
 
-
 # -----------------------------
 # Routes
 # -----------------------------
 
 @router.get("/get-all")
 async def get_all_tokens():
-    """
-    Fetch all page access token records.
-    """
     with Session(engine) as session:
         try:
             records = session.query(PageAccessTokens).all()
@@ -98,20 +89,15 @@ async def get_all_tokens():
                 detail=str(e)
             )
 
-
 @router.post("/")
 async def create_or_update_token(payload: PageAccessTokenRequest):
-    """
-    Create or update a token for the given page.
-    - If record exists (even with token=None) → update token.
-    - If no record exists → create new one.
-    """
     with Session(engine) as session:
         try:
             token = PageAccessTokenService.create_or_update_page_access_token(
                 payload.page_name,
                 payload.page_url,
-                session
+                session,
+                payload.filter  # pass the optional filter
             )
             return {
                 "message": "Token created or updated successfully",
@@ -123,12 +109,8 @@ async def create_or_update_token(payload: PageAccessTokenRequest):
                 detail=str(e)
             )
 
-
 @router.get("/{token_id}")
 async def get_token(token_id: UUID):
-    """
-    Fetch a specific token record by ID.
-    """
     with Session(engine) as session:
         token = PageAccessTokenService.get_page_access_token(token_id, session)
         if token:
@@ -138,12 +120,8 @@ async def get_token(token_id: UUID):
             detail="Token not found"
         )
 
-
 @router.delete("/{token_id}")
 async def delete_token(token_id: UUID):
-    """
-    Nullify the page_access_token instead of deleting the record.
-    """
     with Session(engine) as session:
         if PageAccessTokenService.nullify_token_only(token_id, session):
             return {"message": "Token field set to NULL successfully"}
@@ -152,12 +130,8 @@ async def delete_token(token_id: UUID):
             detail="Token not found"
         )
 
-
 @router.post("/verify-token")
 async def verify_token(page_access_token: str):
-    """
-    Verify if a given token exists in the database.
-    """
     with Session(engine) as session:
         try:
             token_record = session.query(PageAccessTokens).filter(
@@ -171,6 +145,7 @@ async def verify_token(page_access_token: str):
                     "data": {
                         "page_name": token_record.page_name,
                         "page_url": token_record.page_url,
+                        "filter": token_record.filter,
                         "id": str(token_record.id),
                     },
                 }
