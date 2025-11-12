@@ -815,10 +815,10 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         print("_" * 80)
         print(webhook_payload)
         print("_" * 80 + "\n")
-
+        
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver",
+                "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver-elevenlabs",
                 json=webhook_payload,
                 headers={"Content-Type": "application/json"}
             )

@@ -11,7 +11,8 @@ from helpers import logger
 
 class ActiveLoadTracking(SQLModel, table=True):
     __tablename__ = "active_load_tracking"
-    
+    # TEST
+
     load_id: str = Field(primary_key=True, max_length=50)
     trip_id: Optional[str] = Field(default=None, max_length=50)
     vehicle_id: Optional[str] = Field(default=None, max_length=50)
@@ -23,11 +24,13 @@ class ActiveLoadTracking(SQLModel, table=True):
     current_odometer_miles: Optional[float] = Field(default=None)
     miles_threshold: Optional[int] = Field(default=250)
     current_stop_start: Optional[str] = Field(default=None, max_length=50)
-    total_distance_traveled: Optional[Decimal] = Field(default=Decimal('0'), max_digits=10, decimal_places=2)
+    total_distance_traveled: Optional[Decimal] = Field(
+        default=Decimal("0"), max_digits=10, decimal_places=2
+    )
     last_alert_sent: Optional[str] = Field(default=None, max_length=50)
     last_known_lat: Optional[float] = Field(default=None)
     last_known_lng: Optional[float] = Field(default=None)
-    status: Optional[str] = Field(default='EnRouteToDelivery', max_length=50)
+    status: Optional[str] = Field(default="EnRouteToDelivery", max_length=50)
     violation_resolved: Optional[bool] = Field(default=False)
     mute_flag: Optional[bool] = Field(default=False)
     created_at: Optional[str] = Field(default=None, max_length=50)
@@ -39,32 +42,48 @@ class ActiveLoadTracking(SQLModel, table=True):
         return Session(engine)
 
     @classmethod
-    def get_all(cls, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ActiveLoadTracking"]:
+    def get_all(
+        cls, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc"
+    ) -> List["ActiveLoadTracking"]:
         """Get all active load tracking records"""
-        logger.info(f'Getting all active load tracking records with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+        logger.info(
+            f"Getting all active load tracking records with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
-                    'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
+                    "load_id",
+                    "trip_id",
+                    "vehicle_id",
+                    "driver_name",
+                    "truck_unit",
+                    "start_time",
+                    "miles_threshold",
+                    "total_distance_traveled",
+                    "status",
+                    "violation_resolved",
+                    "mute_flag",
+                    "created_at",
+                    "updated_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
-                
+
                 # Build query with sorting
                 if sort_order.lower() == "asc":
                     statement = select(cls).order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+                    statement = (
+                        select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
+                    )
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
@@ -74,54 +93,92 @@ class ActiveLoadTracking(SQLModel, table=True):
             try:
                 statement = select(cls).where(cls.load_id == load_id)
                 return session.exec(statement).first()
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return None
 
     @classmethod
-    def get_by_status(cls, status_filter: str, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ActiveLoadTracking"]:
+    def get_by_status(
+        cls,
+        status_filter: str,
+        limit: int = 5000,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> List["ActiveLoadTracking"]:
         """Get active load tracking records by status"""
-        logger.info(f'Getting active load tracking records by status: {status_filter} with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+        logger.info(
+            f"Getting active load tracking records by status: {status_filter} with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
-                    'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
+                    "load_id",
+                    "trip_id",
+                    "vehicle_id",
+                    "driver_name",
+                    "truck_unit",
+                    "start_time",
+                    "miles_threshold",
+                    "total_distance_traveled",
+                    "status",
+                    "violation_resolved",
+                    "mute_flag",
+                    "created_at",
+                    "updated_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
-                
+
                 # Build query with status filter and sorting
                 statement = select(cls).where(cls.status == status_filter)
-                
+
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(
+                        limit
+                    )
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
-    def get_by_created_at(cls, created_at_date: str, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ActiveLoadTracking"]:
+    def get_by_created_at(
+        cls,
+        created_at_date: str,
+        limit: int = 5000,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> List["ActiveLoadTracking"]:
         """Get active load tracking records by created_at date (YYYY-MM-DD format)"""
-        logger.info(f'Getting active load tracking records by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+        logger.info(
+            f"Getting active load tracking records by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
-                    'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
+                    "load_id",
+                    "trip_id",
+                    "vehicle_id",
+                    "driver_name",
+                    "truck_unit",
+                    "start_time",
+                    "miles_threshold",
+                    "total_distance_traveled",
+                    "status",
+                    "violation_resolved",
+                    "mute_flag",
+                    "created_at",
+                    "updated_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -130,26 +187,32 @@ class ActiveLoadTracking(SQLModel, table=True):
                 # Since created_at is now a string in format 'YYYY-MM-DD HH:MM:SS', we use LIKE to match the date part
                 date_pattern = f"{created_at_date}%"
                 statement = select(cls).where(cls.created_at.like(date_pattern))
-                
+
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(
+                        limit
+                    )
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except ValueError as ve:
-                logger.error(f'Invalid date format: {ve}', exc_info=True)
+                logger.error(f"Invalid date format: {ve}", exc_info=True)
                 return []
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
-    def create(cls, record_data: "ActiveLoadTrackingCreate") -> Optional["ActiveLoadTracking"]:
+    def create(
+        cls, record_data: "ActiveLoadTrackingCreate"
+    ) -> Optional["ActiveLoadTracking"]:
         """Create a new active load tracking record"""
-        logger.info(f'Creating active load tracking record with ID: {record_data.load_id}')
+        logger.info(
+            f"Creating active load tracking record with ID: {record_data.load_id}"
+        )
 
         with cls.get_session() as session:
             try:
@@ -157,10 +220,10 @@ class ActiveLoadTracking(SQLModel, table=True):
                 record_dict = record_data.model_dump(exclude_unset=True)
                 current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-                if 'created_at' not in record_dict or record_dict['created_at'] is None:
-                    record_dict['created_at'] = current_time
-                if 'updated_at' not in record_dict or record_dict['updated_at'] is None:
-                    record_dict['updated_at'] = current_time
+                if "created_at" not in record_dict or record_dict["created_at"] is None:
+                    record_dict["created_at"] = current_time
+                if "updated_at" not in record_dict or record_dict["updated_at"] is None:
+                    record_dict["updated_at"] = current_time
 
                 record = cls(**record_dict)
                 session.add(record)
@@ -169,68 +232,90 @@ class ActiveLoadTracking(SQLModel, table=True):
                 return record
 
             except Exception as err:
-                logger.error(f'Database create error: {err}', exc_info=True)
+                logger.error(f"Database create error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
-    def update(cls, load_id: str, record_data: "ActiveLoadTrackingUpdate") -> Optional["ActiveLoadTracking"]:
+    def update(
+        cls, load_id: str, record_data: "ActiveLoadTrackingUpdate"
+    ) -> Optional["ActiveLoadTracking"]:
         """Update an active load tracking record"""
-        logger.info(f'Updating active load tracking record with ID: {load_id}')
-        
+        logger.info(f"Updating active load tracking record with ID: {load_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.load_id == load_id)).first()
                 if not record:
                     return None
-                
-                update_data = record_data.model_dump(exclude_unset=True, exclude_none=True)
+
+                update_data = record_data.model_dump(
+                    exclude_unset=True, exclude_none=True
+                )
                 for field, value in update_data.items():
                     setattr(record, field, value)
-                
+
                 record.updated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
-                logger.error(f'Database update error: {err}', exc_info=True)
+                logger.error(f"Database update error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
     def delete(cls, load_id: str) -> bool:
         """Delete an active load tracking record"""
-        logger.info(f'Deleting active load tracking record with ID: {load_id}')
-        
+        logger.info(f"Deleting active load tracking record with ID: {load_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.load_id == load_id)).first()
                 if not record:
                     return False
-                
+
                 session.delete(record)
                 session.commit()
                 return True
-                
+
             except Exception as err:
-                logger.error(f'Database delete error: {err}', exc_info=True)
+                logger.error(f"Database delete error: {err}", exc_info=True)
                 session.rollback()
                 return False
 
     @classmethod
-    def get_by_mute_flag(cls, mute_flag: bool, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ActiveLoadTracking"]:
+    def get_by_mute_flag(
+        cls,
+        mute_flag: bool,
+        limit: int = 5000,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> List["ActiveLoadTracking"]:
         """Get active load tracking records by mute_flag"""
-        logger.info(f'Getting active load tracking records by mute_flag: {mute_flag} with limit: {limit}, sort: {sort_by} {sort_order}')
+        logger.info(
+            f"Getting active load tracking records by mute_flag: {mute_flag} with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
 
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'load_id', 'trip_id', 'vehicle_id', 'driver_name', 'truck_unit',
-                    'start_time', 'miles_threshold', 'total_distance_traveled', 'status',
-                    'violation_resolved', 'mute_flag', 'created_at', 'updated_at'
+                    "load_id",
+                    "trip_id",
+                    "vehicle_id",
+                    "driver_name",
+                    "truck_unit",
+                    "start_time",
+                    "miles_threshold",
+                    "total_distance_traveled",
+                    "status",
+                    "violation_resolved",
+                    "mute_flag",
+                    "created_at",
+                    "updated_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -241,19 +326,23 @@ class ActiveLoadTracking(SQLModel, table=True):
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(
+                        limit
+                    )
 
                 records = session.exec(statement).all()
                 return list(records)
 
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
-    def update_mute_flag_by_trip_id(cls, trip_id: str, mute_flag: bool) -> Optional["ActiveLoadTracking"]:
+    def update_mute_flag_by_trip_id(
+        cls, trip_id: str, mute_flag: bool
+    ) -> Optional["ActiveLoadTracking"]:
         """Update mute_flag for an active load tracking record by trip_id"""
-        logger.info(f'Updating mute_flag to {mute_flag} for trip_id: {trip_id}')
+        logger.info(f"Updating mute_flag to {mute_flag} for trip_id: {trip_id}")
 
         with cls.get_session() as session:
             try:
@@ -269,26 +358,30 @@ class ActiveLoadTracking(SQLModel, table=True):
                 return record
 
             except Exception as err:
-                logger.error(f'Database update error: {err}', exc_info=True)
+                logger.error(f"Database update error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
-    def upsert(cls, record_data: "ActiveLoadTrackingUpsert") -> Optional["ActiveLoadTracking"]:
+    def upsert(
+        cls, record_data: "ActiveLoadTrackingUpsert"
+    ) -> Optional["ActiveLoadTracking"]:
         """Upsert an active load tracking record (insert or update if exists)"""
-        logger.info(f'Upserting active load tracking record with ID: {record_data.load_id}')
-        
+        logger.info(
+            f"Upserting active load tracking record with ID: {record_data.load_id}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Build dynamic SQL based on provided fields
                 provided_fields = []
                 provided_values = {}
                 update_clauses = []
-                
+
                 # Always include load_id
                 provided_fields.append("load_id")
                 provided_values["load_id"] = record_data.load_id
-                
+
                 # Check each field and only include if it's not None
                 current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 field_mappings = {
@@ -310,34 +403,36 @@ class ActiveLoadTracking(SQLModel, table=True):
                     "violation_resolved": record_data.violation_resolved,
                     "mute_flag": record_data.mute_flag,
                     "created_at": current_time,  # Always set for new records
-                    "updated_at": current_time
+                    "updated_at": current_time,
                 }
-                
+
                 for field_name, field_value in field_mappings.items():
                     if field_value is not None:
                         provided_fields.append(field_name)
                         provided_values[field_name] = field_value
-                        update_clauses.append(f'"{field_name}" = EXCLUDED."{field_name}"')
-                
+                        update_clauses.append(
+                            f'"{field_name}" = EXCLUDED."{field_name}"'
+                        )
+
                 # Build the dynamic SQL
                 fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                 values_str = ", ".join([f":{field}" for field in provided_fields])
                 update_str = ", ".join(update_clauses)
-                
+
                 sql = f"""
                     INSERT INTO active_load_tracking ({fields_str})
                     VALUES ({values_str})
                     ON CONFLICT ("load_id") DO UPDATE SET {update_str}
                 """
-                
+
                 session.execute(text(sql), provided_values)
                 session.commit()
-                
+
                 # Return the updated/inserted record
                 return cls.get_by_id(record_data.load_id)
-                
+
             except Exception as err:
-                logger.error(f'Database upsert error: {err}', exc_info=True)
+                logger.error(f"Database upsert error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
@@ -354,11 +449,11 @@ class ActiveLoadTrackingCreate(BaseModel):
     current_odometer_miles: Optional[float] = None
     miles_threshold: Optional[int] = 250
     current_stop_start: Optional[str] = None
-    total_distance_traveled: Optional[Decimal] = Decimal('0')
+    total_distance_traveled: Optional[Decimal] = Decimal("0")
     last_alert_sent: Optional[str] = None
     last_known_lat: Optional[float] = None
     last_known_lng: Optional[float] = None
-    status: Optional[str] = 'EnRouteToDelivery'
+    status: Optional[str] = "EnRouteToDelivery"
     violation_resolved: Optional[bool] = False
     mute_flag: Optional[bool] = False
 
@@ -414,10 +509,14 @@ class ViolationAlert(SQLModel, table=True):
     location_lat: Optional[float] = Field(default=None)
     location_lng: Optional[float] = Field(default=None)
     location: Optional[str] = Field(default=None, max_length=255)
-    distance_traveled_miles: Optional[Decimal] = Field(default=None, max_digits=10, decimal_places=2)
+    distance_traveled_miles: Optional[Decimal] = Field(
+        default=None, max_digits=10, decimal_places=2
+    )
     current_odometer_miles: Optional[float] = Field(default=None)
     stop_duration_minutes: Optional[int] = Field(default=None)
-    current_speed: Optional[Decimal] = Field(default=None, max_digits=5, decimal_places=2)
+    current_speed: Optional[Decimal] = Field(
+        default=None, max_digits=5, decimal_places=2
+    )
     alert_sent_to_slack: Optional[bool] = Field(default=True)
     created_at: Optional[str] = Field(default=None, max_length=50)
 
@@ -427,17 +526,30 @@ class ViolationAlert(SQLModel, table=True):
         return Session(engine)
 
     @classmethod
-    def get_all(cls, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ViolationAlert"]:
+    def get_all(
+        cls, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc"
+    ) -> List["ViolationAlert"]:
         """Get all violation alerts"""
-        logger.info(f'Getting all violation alerts with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+        logger.info(
+            f"Getting all violation alerts with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'id', 'load_id', 'vehicle_id', 'violation_time', 'location_lat', 'location_lng',
-                    'location', 'distance_traveled_miles', 'current_odometer_miles',
-                    'stop_duration_minutes', 'current_speed', 'created_at'
+                    "id",
+                    "load_id",
+                    "vehicle_id",
+                    "violation_time",
+                    "location_lat",
+                    "location_lng",
+                    "location",
+                    "distance_traveled_miles",
+                    "current_odometer_miles",
+                    "stop_duration_minutes",
+                    "current_speed",
+                    "created_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -446,13 +558,15 @@ class ViolationAlert(SQLModel, table=True):
                 if sort_order.lower() == "asc":
                     statement = select(cls).order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+                    statement = (
+                        select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
+                    )
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
@@ -462,23 +576,40 @@ class ViolationAlert(SQLModel, table=True):
             try:
                 statement = select(cls).where(cls.id == record_id)
                 return session.exec(statement).first()
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return None
 
     @classmethod
-    def get_by_created_at(cls, created_at_date: str, limit: int = 5000, sort_by: str = "created_at", sort_order: str = "desc") -> List["ViolationAlert"]:
+    def get_by_created_at(
+        cls,
+        created_at_date: str,
+        limit: int = 5000,
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
+    ) -> List["ViolationAlert"]:
         """Get violation alerts by created_at date (YYYY-MM-DD format)"""
-        logger.info(f'Getting violation alerts by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}')
+        logger.info(
+            f"Getting violation alerts by created_at date: {created_at_date} with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
 
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'id', 'load_id', 'vehicle_id', 'violation_time', 'location_lat', 'location_lng',
-                    'location', 'distance_traveled_miles', 'current_odometer_miles',
-                    'stop_duration_minutes', 'current_speed', 'created_at'
+                    "id",
+                    "load_id",
+                    "vehicle_id",
+                    "violation_time",
+                    "location_lat",
+                    "location_lng",
+                    "location",
+                    "distance_traveled_miles",
+                    "current_odometer_miles",
+                    "stop_duration_minutes",
+                    "current_speed",
+                    "created_at",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_at"
@@ -491,22 +622,24 @@ class ViolationAlert(SQLModel, table=True):
                 if sort_order.lower() == "asc":
                     statement = statement.order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(limit)
+                    statement = statement.order_by(getattr(cls, sort_by).desc()).limit(
+                        limit
+                    )
 
                 records = session.exec(statement).all()
                 return list(records)
 
             except ValueError as ve:
-                logger.error(f'Invalid date format: {ve}', exc_info=True)
+                logger.error(f"Invalid date format: {ve}", exc_info=True)
                 return []
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
     def create(cls, record_data: "ViolationAlertCreate") -> Optional["ViolationAlert"]:
         """Create a new violation alert"""
-        logger.info('Creating violation alert record')
+        logger.info("Creating violation alert record")
 
         with cls.get_session() as session:
             try:
@@ -514,8 +647,8 @@ class ViolationAlert(SQLModel, table=True):
                 record_dict = record_data.model_dump(exclude_unset=True)
                 current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-                if 'created_at' not in record_dict or record_dict['created_at'] is None:
-                    record_dict['created_at'] = current_time
+                if "created_at" not in record_dict or record_dict["created_at"] is None:
+                    record_dict["created_at"] = current_time
 
                 record = cls(**record_dict)
                 session.add(record)
@@ -524,59 +657,63 @@ class ViolationAlert(SQLModel, table=True):
                 return record
 
             except Exception as err:
-                logger.error(f'Database create error: {err}', exc_info=True)
+                logger.error(f"Database create error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
-    def update(cls, record_id: int, record_data: "ViolationAlertUpdate") -> Optional["ViolationAlert"]:
+    def update(
+        cls, record_id: int, record_data: "ViolationAlertUpdate"
+    ) -> Optional["ViolationAlert"]:
         """Update a violation alert"""
-        logger.info(f'Updating violation alert with ID: {record_id}')
-        
+        logger.info(f"Updating violation alert with ID: {record_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.id == record_id)).first()
                 if not record:
                     return None
-                
-                update_data = record_data.model_dump(exclude_unset=True, exclude_none=True)
+
+                update_data = record_data.model_dump(
+                    exclude_unset=True, exclude_none=True
+                )
                 for field, value in update_data.items():
                     setattr(record, field, value)
-                
+
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
-                logger.error(f'Database update error: {err}', exc_info=True)
+                logger.error(f"Database update error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
     def delete(cls, record_id: int) -> bool:
         """Delete a violation alert"""
-        logger.info(f'Deleting violation alert with ID: {record_id}')
-        
+        logger.info(f"Deleting violation alert with ID: {record_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.id == record_id)).first()
                 if not record:
                     return False
-                
+
                 session.delete(record)
                 session.commit()
                 return True
-                
+
             except Exception as err:
-                logger.error(f'Database delete error: {err}', exc_info=True)
+                logger.error(f"Database delete error: {err}", exc_info=True)
                 session.rollback()
                 return False
 
     @classmethod
     def upsert(cls, record_data: "ViolationAlertUpsert") -> Optional["ViolationAlert"]:
         """Upsert a violation alert (insert or update if exists)"""
-        logger.info('Upserting violation alert record')
+        logger.info("Upserting violation alert record")
 
         with cls.get_session() as session:
             try:
@@ -584,11 +721,15 @@ class ViolationAlert(SQLModel, table=True):
 
                 if record_data.id:
                     # Update existing record
-                    record = session.exec(select(cls).where(cls.id == record_data.id)).first()
+                    record = session.exec(
+                        select(cls).where(cls.id == record_data.id)
+                    ).first()
                     if record:
-                        update_data = record_data.model_dump(exclude_unset=True, exclude_none=True)
+                        update_data = record_data.model_dump(
+                            exclude_unset=True, exclude_none=True
+                        )
                         for field, value in update_data.items():
-                            if field != 'id':
+                            if field != "id":
                                 setattr(record, field, value)
                         session.add(record)
                         session.commit()
@@ -597,10 +738,10 @@ class ViolationAlert(SQLModel, table=True):
 
                 # Create new record
                 record_dict = record_data.model_dump(exclude_unset=True)
-                if 'id' in record_dict and record_dict['id'] is None:
-                    del record_dict['id']
-                if 'created_at' not in record_dict or record_dict['created_at'] is None:
-                    record_dict['created_at'] = current_time
+                if "id" in record_dict and record_dict["id"] is None:
+                    del record_dict["id"]
+                if "created_at" not in record_dict or record_dict["created_at"] is None:
+                    record_dict["created_at"] = current_time
                 record = cls(**record_dict)
                 session.add(record)
                 session.commit()
@@ -608,7 +749,7 @@ class ViolationAlert(SQLModel, table=True):
                 return record
 
             except Exception as err:
-                logger.error(f'Database upsert error: {err}', exc_info=True)
+                logger.error(f"Database upsert error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
@@ -661,7 +802,7 @@ class ViolationAlertUpsert(BaseModel):
 
 class DispatchedTrip(SQLModel, table=True):
     __tablename__ = "dispatched_trips"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     trip_key: Optional[int] = Field(default=None, unique=True)
     trip_id: Optional[str] = Field(default=None, max_length=50)
@@ -678,31 +819,44 @@ class DispatchedTrip(SQLModel, table=True):
         return Session(engine)
 
     @classmethod
-    def get_all(cls, limit: int = 5000, sort_by: str = "created_on", sort_order: str = "desc") -> List["DispatchedTrip"]:
+    def get_all(
+        cls, limit: int = 5000, sort_by: str = "created_on", sort_order: str = "desc"
+    ) -> List["DispatchedTrip"]:
         """Get all dispatched trips"""
-        logger.info(f'Getting all dispatched trips with limit: {limit}, sort: {sort_by} {sort_order}')
-        
+        logger.info(
+            f"Getting all dispatched trips with limit: {limit}, sort: {sort_by} {sort_order}"
+        )
+
         with cls.get_session() as session:
             try:
                 # Validate sort_by field
                 valid_sort_fields = {
-                    'id', 'trip_key', 'trip_id', 'created_by', 'created_on', 'derived_driver_key',
-                    'derivedtrailerkey', 'derivedtruckkey', 'dispatchedby'
+                    "id",
+                    "trip_key",
+                    "trip_id",
+                    "created_by",
+                    "created_on",
+                    "derived_driver_key",
+                    "derivedtrailerkey",
+                    "derivedtruckkey",
+                    "dispatchedby",
                 }
                 if sort_by not in valid_sort_fields:
                     sort_by = "created_on"
-                
+
                 # Build query with sorting
                 if sort_order.lower() == "asc":
                     statement = select(cls).order_by(getattr(cls, sort_by)).limit(limit)
                 else:
-                    statement = select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
-                
+                    statement = (
+                        select(cls).order_by(getattr(cls, sort_by).desc()).limit(limit)
+                    )
+
                 records = session.exec(statement).all()
                 return list(records)
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return []
 
     @classmethod
@@ -712,16 +866,16 @@ class DispatchedTrip(SQLModel, table=True):
             try:
                 statement = select(cls).where(cls.trip_id == trip_id)
                 return session.exec(statement).first()
-                
+
             except Exception as err:
-                logger.error(f'Database query error: {err}', exc_info=True)
+                logger.error(f"Database query error: {err}", exc_info=True)
                 return None
 
     @classmethod
     def create(cls, record_data: "DispatchedTripCreate") -> Optional["DispatchedTrip"]:
         """Create a new dispatched trip"""
-        logger.info('Creating dispatched trip record')
-        
+        logger.info("Creating dispatched trip record")
+
         with cls.get_session() as session:
             try:
                 record = cls(**record_data.model_dump(exclude_unset=True))
@@ -729,89 +883,95 @@ class DispatchedTrip(SQLModel, table=True):
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
-                logger.error(f'Database create error: {err}', exc_info=True)
+                logger.error(f"Database create error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
-    def update(cls, trip_id: str, record_data: "DispatchedTripUpdate") -> Optional["DispatchedTrip"]:
+    def update(
+        cls, trip_id: str, record_data: "DispatchedTripUpdate"
+    ) -> Optional["DispatchedTrip"]:
         """Update a dispatched trip"""
-        logger.info(f'Updating dispatched trip with trip_id: {trip_id}')
-        
+        logger.info(f"Updating dispatched trip with trip_id: {trip_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.trip_id == trip_id)).first()
                 if not record:
                     return None
-                
-                update_data = record_data.model_dump(exclude_unset=True, exclude_none=True)
+
+                update_data = record_data.model_dump(
+                    exclude_unset=True, exclude_none=True
+                )
                 for field, value in update_data.items():
                     setattr(record, field, value)
-                
+
                 session.add(record)
                 session.commit()
                 session.refresh(record)
                 return record
-                
+
             except Exception as err:
-                logger.error(f'Database update error: {err}', exc_info=True)
+                logger.error(f"Database update error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
     @classmethod
     def delete(cls, trip_id: str) -> bool:
         """Delete a dispatched trip"""
-        logger.info(f'Deleting dispatched trip with trip_id: {trip_id}')
-        
+        logger.info(f"Deleting dispatched trip with trip_id: {trip_id}")
+
         with cls.get_session() as session:
             try:
                 record = session.exec(select(cls).where(cls.trip_id == trip_id)).first()
                 if not record:
                     return False
-                
+
                 session.delete(record)
                 session.commit()
                 return True
-                
+
             except Exception as err:
-                logger.error(f'Database delete error: {err}', exc_info=True)
+                logger.error(f"Database delete error: {err}", exc_info=True)
                 session.rollback()
                 return False
 
     @classmethod
     def delete_by_trip_key(cls, trip_key: int) -> bool:
         """Delete a dispatched trip by trip_key"""
-        logger.info(f'Deleting dispatched trip with trip_key: {trip_key}')
-        
+        logger.info(f"Deleting dispatched trip with trip_key: {trip_key}")
+
         with cls.get_session() as session:
             try:
-                record = session.exec(select(cls).where(cls.trip_key == trip_key)).first()
+                record = session.exec(
+                    select(cls).where(cls.trip_key == trip_key)
+                ).first()
                 if not record:
                     return False
-                
+
                 session.delete(record)
                 session.commit()
                 return True
-                
+
             except Exception as err:
-                logger.error(f'Database delete error: {err}', exc_info=True)
+                logger.error(f"Database delete error: {err}", exc_info=True)
                 session.rollback()
                 return False
 
     @classmethod
     def upsert(cls, record_data: "DispatchedTripUpsert") -> Optional["DispatchedTrip"]:
         """Upsert a dispatched trip (insert or update if exists)"""
-        logger.info('Upserting dispatched trip record')
-        
+        logger.info("Upserting dispatched trip record")
+
         with cls.get_session() as session:
             try:
                 # Build dynamic SQL based on provided fields
                 provided_fields = []
                 provided_values = {}
                 update_clauses = []
-                
+
                 # Check each field and only include if it's not None
                 field_mappings = {
                     "trip_key": record_data.trip_key,
@@ -821,49 +981,53 @@ class DispatchedTrip(SQLModel, table=True):
                     "derived_driver_key": record_data.derived_driver_key,
                     "derivedtrailerkey": record_data.derivedtrailerkey,
                     "derivedtruckkey": record_data.derivedtruckkey,
-                    "dispatchedby": record_data.dispatchedby
+                    "dispatchedby": record_data.dispatchedby,
                 }
-                
+
                 for field_name, field_value in field_mappings.items():
                     if field_value is not None:
                         provided_fields.append(field_name)
                         provided_values[field_name] = field_value
-                        update_clauses.append(f'"{field_name}" = EXCLUDED."{field_name}"')
-                
+                        update_clauses.append(
+                            f'"{field_name}" = EXCLUDED."{field_name}"'
+                        )
+
                 if not provided_fields:
                     return None
-                
+
                 # Use trip_key as the conflict field if it's provided
                 if record_data.trip_key is not None:
                     # Build the dynamic SQL
                     fields_str = ", ".join([f'"{field}"' for field in provided_fields])
                     values_str = ", ".join([f":{field}" for field in provided_fields])
                     update_str = ", ".join(update_clauses)
-                    
+
                     sql = f"""
                         INSERT INTO dispatched_trips ({fields_str})
                         VALUES ({values_str})
                         ON CONFLICT ("trip_key") DO UPDATE SET {update_str}
                     """
-                    
+
                     session.execute(text(sql), provided_values)
                     session.commit()
-                    
+
                     # Return the updated/inserted record
-                    return session.exec(select(cls).where(cls.trip_key == record_data.trip_key)).first()
+                    return session.exec(
+                        select(cls).where(cls.trip_key == record_data.trip_key)
+                    ).first()
                 else:
                     # Create new record without conflict handling
                     record_dict = record_data.model_dump(exclude_unset=True)
-                    if 'id' in record_dict and record_dict['id'] is None:
-                        del record_dict['id']
+                    if "id" in record_dict and record_dict["id"] is None:
+                        del record_dict["id"]
                     record = cls(**record_dict)
                     session.add(record)
                     session.commit()
                     session.refresh(record)
                     return record
-                
+
             except Exception as err:
-                logger.error(f'Database upsert error: {err}', exc_info=True)
+                logger.error(f"Database upsert error: {err}", exc_info=True)
                 session.rollback()
                 return None
 
