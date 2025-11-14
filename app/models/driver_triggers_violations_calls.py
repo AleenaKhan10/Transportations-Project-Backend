@@ -1,5 +1,5 @@
 from sqlmodel import SQLModel, Field, Session, select
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 import uuid
 from db import engine
@@ -48,11 +48,13 @@ class DriverTriggersViolationCalls(SQLModel, table=True):
         Insert a new violation call record.
         `data` should be a dict containing the fields to insert.
         """
+        print("INSERT PAYLOAD:", data)
         with cls.get_session() as session:
             record = cls(**data)
             session.add(record)
             session.commit()
             session.refresh(record)
+            print("INSERTED RECORD ID:", record.id)
             return record
 
     # ----------------------------------------------------
@@ -79,3 +81,33 @@ class DriverTriggersViolationCalls(SQLModel, table=True):
         with cls.get_session() as session:
             statement = select(cls).where(cls.id == record_id)
             return session.exec(statement).first()
+
+    # ----------------------------------------------------
+    # UPDATE RECORD BY call_id
+    # ----------------------------------------------------
+    @classmethod
+    def update_violation_by_call_id(
+        cls, call_id: str, data: Dict
+    ) -> "DriverTriggersViolationCalls":
+        """
+        Update a violation call record by call_id.
+        `data` is a dict of fields to update.
+        """
+        with cls.get_session() as session:
+            statement = select(cls).where(cls.call_id == call_id)
+            record = session.exec(statement).first()
+
+            if not record:
+                return None
+
+            for key, value in data.items():
+                if hasattr(record, key):
+                    setattr(record, key, value)
+
+            # Update updated_at timestamp
+            record.updated_at = datetime.utcnow()
+
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record

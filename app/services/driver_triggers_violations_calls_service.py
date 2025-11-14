@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Body
 from models.driver_triggers_violations_calls import DriverTriggersViolationCalls
 from typing import List
 import uuid
@@ -42,3 +42,16 @@ def create_violation_record(payload: dict):
         raise HTTPException(
             status_code=400, detail=f"Failed to create record: {str(e)}"
         )
+
+
+# ----------------------------------------------------
+# PUT: Update Record by call_id
+# ----------------------------------------------------
+@router.put("/update_by_call_id/{call_id}", response_model=DriverTriggersViolationCalls)
+def update_violation_record_by_call_id(call_id: str, payload: dict = Body(...)):
+    record = DriverTriggersViolationCalls.update_violation_by_call_id(call_id, payload)
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found.")
+
+    return record

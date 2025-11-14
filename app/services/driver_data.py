@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from models.driver_data import (
     DriverTripData,
     ActiveLoadTracking,
@@ -9,6 +9,7 @@ from models.driver_data import (
 )
 
 from models.vapi import BatchCallRequest, GeneratePromptRequest
+from models.driver_triggers_violations_calls import DriverTriggersViolationCalls
 
 # Router with prefix + tags
 router = APIRouter(prefix="/driver_data", tags=["driver_data"])
@@ -96,3 +97,83 @@ async def generate_prompt(request: GeneratePromptRequest):
     """
     result = await generate_prompt_for_driver(request)
     return result
+
+
+# ----------------- Webhook to receive ElevenLabs events -----------------
+CALL_TRANSCRIPTS = {}
+
+
+@router.post("/call/webhook")
+async def elevenlabs_call_webhook(request: Request):
+    """
+    Receives events from ElevenLabs:
+    - conversation.transcript → accumulates transcript
+    - call.completed → updates DB with summary, transcript, duration
+    """
+    print(
+        "-------------------------------------------------------------------------------------------"
+    )
+    print(request)
+    try:
+        body = await request.json()
+        print(body)
+        event = body.get("event")
+        call_id = body.get("call_id") or body.get("callContextId")
+        metadata = body.get("metadata", {})
+
+        if not event:
+            return {"status": "ignored_no_event"}
+
+        # ---------------- Transcript chunk ----------------
+        if event == "conversation.transcript":
+            text = body.get("transcript") or ""
+            CALL_TRANSCRIPTS.setdefault(call_id, "")
+            CALL_TRANSCRIPTS[call_id] += text + "\n"
+            return {"status": "transcript_saved"}
+
+        # ---------------- Call completed ----------------
+        elif event == "call.completed":
+            summary = body.get("summary", "")
+            duration = body.get("duration", 0)
+            final_transcript = CALL_TRANSCRIPTS.get(call_id, "")
+
+            update_payload = {
+                "call_id": call_id,
+                "call_summary": summary,
+                "call_transcript": final_transcript,
+                "call_duration": duration,
+                "call_status": "completed",
+            }
+
+            print(
+                "-------------------------------------------------------------------------------------------"
+            )
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
+            print("WEBHOOK RESPONSE UPDATED DATA")
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
+            print(update_payload)
+
+            # DriverTriggersViolationCalls.create_violation_data(update_payload)
+            DriverTriggersViolationCalls.update_violation_by_call_id(
+                call_id, update_payload
+            )
+
+            # Clean up memory
+            if call_id in CALL_TRANSCRIPTS:
+                del CALL_TRANSCRIPTS[call_id]
+
+            return {"status": "saved_to_database"}
+
+        else:
+            return {"status": "ignored_event_type"}
+
+    except Exception as e:
+        import traceback
+
+        raise HTTPException(
+            status_code=500, detail=f"Webhook error: {str(e)}\n{traceback.format_exc()}"
+        )
