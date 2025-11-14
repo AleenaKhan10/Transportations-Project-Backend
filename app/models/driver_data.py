@@ -8,6 +8,7 @@ from config import settings
 import httpx
 from fastapi import HTTPException
 from models.driver_model_prompt import DriverPrompts
+from models.driver_triggers_violations_calls import DriverTriggersViolationCalls
 
 logger = logging.getLogger(__name__)
 
@@ -1165,6 +1166,22 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         logger.info(f"✅ Call initiated successfully for {driver.driverName}")
 
+        # --------------------------------------------------------------------
+        # ✅ STORE INITIAL CALL RECORD IN SUPABASE (status = initiated)
+        # --------------------------------------------------------------------
+        call_context_id = webhook_response.get("callContextId")
+        call_sid = webhook_response.get("callSid")
+        insert_payload = {
+            "call_id": call_sid,
+            "driver_id": driver.driverId,
+            "driver_name": driver.driverName,
+            "phone": driver.phoneNumber,
+            "call_status": "initiated",
+        }
+
+        DriverTriggersViolationCalls.create_violation_data(insert_payload)
+
+        # Return to frontend
         return {
             "message": "Call initiated successfully",
             "timestamp": request.timestamp,
