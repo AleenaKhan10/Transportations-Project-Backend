@@ -7,6 +7,7 @@ from models.vapi import BatchCallRequest
 from config import settings
 import httpx
 from fastapi import HTTPException
+from models.driver_model_prompt import DriverPrompts
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +330,99 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
 
 
 # -------------------------------
+# HELPER FUNCTION TO FETCH PROMPTS FROM DATABASE
+# -------------------------------
+def get_prompt_from_db(prompt_name: str) -> Optional[DriverPrompts]:
+    """Fetch a prompt from the database by name"""
+    try:
+        with Session(engine) as session:
+            prompt = session.exec(
+                select(DriverPrompts).where(DriverPrompts.prompt_name == prompt_name)
+            ).first()
+
+            # LOG: Database fetch result
+            if prompt:
+                print(f"\n✅ DB FETCH SUCCESS: {prompt_name}")
+                print(f"   - TRUE Prompt: {prompt.condition_true_prompt[:80]}..." if prompt.condition_true_prompt else "   - TRUE Prompt: NULL")
+                print(f"   - FALSE Prompt: {prompt.condition_false_prompt[:80]}..." if prompt.condition_false_prompt else "   - FALSE Prompt: NULL")
+            else:
+                print(f"\n❌ DB FETCH FAILED: {prompt_name} not found in database")
+
+            return prompt
+    except Exception as err:
+        logger.error(f"Error fetching prompt '{prompt_name}' from database: {err}", exc_info=True)
+        print(f"\n❌ DB FETCH ERROR: {prompt_name} - {str(err)}")
+        return None
+
+
+def map_description_to_prompt_name(description: str) -> Optional[str]:
+    """
+    Map frontend violation/reminder description to database prompt_name.
+    Returns the prompt_name if matched, None otherwise.
+    """
+    desc_lower = description.lower()
+
+    # Map violation descriptions to prompt names
+    if "temperature" in desc_lower and ("not equal" in desc_lower or "set point" in desc_lower):
+        mapped_name = "temperature_not_equal"
+    elif "200 miles" in desc_lower or ("stopping" in desc_lower and "200" in desc_lower):
+        mapped_name = "driver_stopping_200_miles"
+    elif "out of route" in desc_lower:
+        mapped_name = "driver_out_of_route"
+    elif "trailer" in desc_lower and "check" in desc_lower:
+        mapped_name = "trailer_check"
+    elif "fuel" in desc_lower and ("lower" in desc_lower or "percentage" in desc_lower):
+        mapped_name = "fuel_lower_than_required"
+
+    # Map reminder descriptions to prompt names
+    elif "pallet" in desc_lower or "peace count" in desc_lower or "piece count" in desc_lower:
+        mapped_name = "verify_load_pallet_count"
+    elif "loaded" in desc_lower and "picture" in desc_lower:
+        mapped_name = "send_loaded_picture"
+    elif "seal" in desc_lower and "picture" in desc_lower:
+        mapped_name = "send_seal_pictures"
+    elif "secure" in desc_lower and ("load" in desc_lower or "cargo" in desc_lower):
+        mapped_name = "secure_load_pictures"
+    elif "destination" in desc_lower and ("bol" in desc_lower or "bill" in desc_lower or "lading" in desc_lower):
+        mapped_name = "check_destination_bol"
+    elif "wait" in desc_lower and "approval" in desc_lower:
+        mapped_name = "wait_for_approval"
+    else:
+        mapped_name = None
+
+    # LOG: Mapping result
+    if mapped_name:
+        print(f"\n🔄 MAPPING SUCCESS:")
+        print(f"   Description: '{description[:60]}...'")
+        print(f"   → Mapped to: '{mapped_name}'")
+    else:
+        print(f"\n⚠️  MAPPING FAILED:")
+        print(f"   Description: '{description[:60]}...'")
+        print(f"   → No mapping found, will use original description")
+
+    return mapped_name
+
+
+def build_reminder_prompt(violation_type: str, violation_description: str) -> str:
+    """
+    Build a reminder prompt by fetching from database.
+    Falls back to using the violation description if not found in DB.
+    """
+    # First, try to map the description to a prompt_name
+    prompt_name = map_description_to_prompt_name(violation_description)
+
+    if prompt_name:
+        prompt_record = get_prompt_from_db(prompt_name)
+        if prompt_record and prompt_record.condition_true_prompt:
+            logger.info(f"Using DB prompt for '{prompt_name}'")
+            return prompt_record.condition_true_prompt
+
+    # Fallback: use the description from the violation
+    logger.warning(f"Prompt not found in database for description: '{violation_description[:50]}...', using original description")
+    return violation_description
+
+
+# -------------------------------
 # PERSONALIZED PROMPT BUILDERS
 # -------------------------------
 def build_temperature_violation_prompt(trip_data: Dict) -> str:
@@ -342,28 +436,65 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
     if int(set_point) == int(current_temp):
         return None
 
+    # Fetch prompt from database
+    prompt_record = get_prompt_from_db("temperature_not_equal")
+    if not prompt_record:
+        logger.warning("temperature_not_equal prompt not found in database, using fallback")
+        # Fallback to hardcoded prompts if DB fetch fails
+        if current_temp > set_point:
+            return f"Your temp is at {int(current_temp)} degrees Fahrenheit but needs to be {int(set_point)} degrees Fahrenheit. What's going on with that?"
+        else:
+            return f"Temp is running cold at {int(current_temp)} degrees Fahrenheit, needs to be {int(set_point)} degrees Fahrenheit. Can you adjust it?"
+
+    # Use prompt from database
     if current_temp > set_point:
-        return f"Your temp is at {int(current_temp)} degrees Fahrenheit but needs to be {int(set_point)} degrees Fahrenheit. What's going on with that?"
+        template = prompt_record.condition_true_prompt
     else:
-        return f"Temp is running cold at {int(current_temp)} degrees Fahrenheit, needs to be {int(set_point)} degrees Fahrenheit. Can you adjust it?"
+        template = prompt_record.condition_false_prompt
+
+    # Replace placeholders with actual values
+    return template.format(current_temp=int(current_temp), set_point=int(set_point))
 
 
 def build_out_of_route_prompt(trip_data: Dict) -> str:
     location = trip_data.get("current_location")
 
+    # Fetch prompt from database
+    prompt_record = get_prompt_from_db("driver_out_of_route")
+    if not prompt_record:
+        logger.warning("driver_out_of_route prompt not found in database, using fallback")
+        # Fallback to hardcoded prompts if DB fetch fails
+        if location:
+            return f"I see you're at {location} and showing out of route. What's the reason for the detour?"
+        else:
+            return "You're showing out of route. Can you tell me why?"
+
+    # Use prompt from database
     if location:
-        return f"I see you're at {location} and showing out of route. What's the reason for the detour?"
+        template = prompt_record.condition_true_prompt
+        return template.format(location=location)
     else:
-        return "You're showing out of route. Can you tell me why?"
+        return prompt_record.condition_false_prompt
 
 
 def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
     miles = trip_data.get("miles_driven")
 
-    if miles is not None:
-        return f"I see you stopped after only {int(miles)} miles, before completing 200 miles. What's the reason for stopping early?"
+    # Fetch prompt from database
+    prompt_record = get_prompt_from_db("driver_stopping_200_miles")
+    if not prompt_record:
+        logger.warning("driver_stopping_200_miles prompt not found in database, using fallback")
+        # Fallback to hardcoded prompts if DB fetch fails
+        if miles is not None:
+            return f"I see you stopped after only {int(miles)} miles, before completing 200 miles. What's the reason for stopping early?"
+        return "You stopped before completing 200 miles. What's the reason for the early stop?"
 
-    return "You stopped before completing 200 miles. What's the reason for the early stop?"
+    # Use prompt from database
+    if miles is not None:
+        template = prompt_record.condition_true_prompt
+        return template.format(miles_driven=int(miles))
+    else:
+        return prompt_record.condition_false_prompt
 
 
 def build_fuel_violation_prompt(trip_data: Dict) -> str:
@@ -377,16 +508,35 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
     if fuel >= required:
         return None
 
-    return f"Your fuel is at {int(fuel)}%. What's your refueling plan?"
+    # Fetch prompt from database
+    prompt_record = get_prompt_from_db("fuel_lower_than_required")
+    if not prompt_record:
+        logger.warning("fuel_lower_than_required prompt not found in database, using fallback")
+        # Fallback to hardcoded prompt if DB fetch fails
+        return f"Your fuel is at {int(fuel)}%. What's your refueling plan?"
+
+    # Use prompt from database (only condition_true_prompt is used for fuel violation)
+    template = prompt_record.condition_true_prompt
+    return template.format(fuel_percent=int(fuel))
 
 
 def build_trailer_check_prompt(trip_data: Dict) -> str:
     trl_check = trip_data.get("trl_check")
 
-    if trl_check == "🔴":
-        return "I'm seeing an alert that your truck and trailer aren't together. Are you with your trailer right now?"
+    # Fetch prompt from database
+    prompt_record = get_prompt_from_db("trailer_check")
+    if not prompt_record:
+        logger.warning("trailer_check prompt not found in database, using fallback")
+        # Fallback to hardcoded prompts if DB fetch fails
+        if trl_check == "🔴":
+            return "I'm seeing an alert that your truck and trailer aren't together. Are you with your trailer right now?"
+        return "Quick check - are you and your trailer together right now?"
 
-    return "Quick check - are you and your trailer together right now?"
+    # Use prompt from database
+    if trl_check == "🔴":
+        return prompt_record.condition_true_prompt
+    else:
+        return prompt_record.condition_false_prompt
 
 
 # -------------------------------
@@ -518,32 +668,55 @@ def generate_enhanced_conversational_prompt(
     """
     bullets = []
 
+    # LOG: Start processing violations
+    print("\n" + "=" * 100)
+    print("🔧 PROCESSING VIOLATIONS/REMINDERS")
+    print("=" * 100)
+    print(f"Total items to process: {len(violations) if violations else 0}")
+    print("=" * 100)
+
     # Process ONLY the violations sent from frontend
     if violations:
-        for violation in violations:
+        for idx, violation in enumerate(violations, 1):
+            print(f"\n--- Processing Item {idx}/{len(violations)} ---")
             v_type = violation.type.lower()
-            v_desc = violation.description.lower()
+            v_desc = violation.description
             prompt_text = None
 
-            # Check if this is a reminder type (starts with "Reminder" or contains reminder keywords)
-            if v_type == "reminder" or "reminder" in v_desc.lower():
-                prompt_text = f"Reminder: {violation.description}"
+            # Try to map the description to a prompt_name from the database
+            prompt_name = map_description_to_prompt_name(v_desc)
+
+            # Check if this is a reminder type
+            if v_type == "reminder":
+                # Fetch reminder prompt from database using mapping
+                if prompt_name:
+                    logger.info(f"Processing REMINDER: {prompt_name}")
+                    prompt_text = build_reminder_prompt(violation.type, v_desc)
+                else:
+                    # Fallback to original description if no mapping found
+                    prompt_text = v_desc
+
             # Build data-driven prompts with actual trip data
-            elif trip_data:
-                if "temperature" in v_type or "temperature" in v_desc or "temp" in v_desc:
+            elif v_type == "violation" and trip_data and prompt_name:
+                logger.info(f"Processing VIOLATION: {prompt_name}")
+
+                # Call appropriate builder function based on mapped prompt_name
+                if prompt_name == "temperature_not_equal":
                     prompt_text = build_temperature_violation_prompt(trip_data)
-                elif "out of route" in v_type or "out of route" in v_desc or "route" in v_desc:
+                elif prompt_name == "driver_out_of_route":
                     prompt_text = build_out_of_route_prompt(trip_data)
-                elif "200" in v_type or "200" in v_desc or "stopping" in v_type or "stopping" in v_desc or "miles" in v_desc:
+                elif prompt_name == "driver_stopping_200_miles":
                     prompt_text = build_stopping_200_miles_prompt(trip_data)
-                elif "fuel" in v_type or "fuel" in v_desc:
+                elif prompt_name == "fuel_lower_than_required":
                     prompt_text = build_fuel_violation_prompt(trip_data)
-                elif "trailer" in v_type or "trailer" in v_desc or "trl" in v_desc:
+                elif prompt_name == "trailer_check":
                     prompt_text = build_trailer_check_prompt(trip_data)
                 else:
-                    prompt_text = violation.description
+                    # Fallback for unmapped violations
+                    prompt_text = v_desc
             else:
-                prompt_text = violation.description
+                # Fallback: use original description if no trip data or mapping
+                prompt_text = v_desc
 
             # Only add if prompt_text is not None (skip filtered violations)
             if prompt_text:
@@ -552,8 +725,16 @@ def generate_enhanced_conversational_prompt(
     # Build the complete prompt
     first_name = driver_name.split()[0] if driver_name else "there"
 
+    # Fetch system prompt from database
+    system_prompt_record = get_prompt_from_db("system_prompt")
+    if system_prompt_record and system_prompt_record.condition_true_prompt:
+        system_prompt_text = system_prompt_record.condition_true_prompt
+    else:
+        logger.warning("system_prompt not found in database, using fallback")
+        system_prompt_text = SYSTEM_PROMPT
+
     prompt_parts = [
-        SYSTEM_PROMPT,
+        system_prompt_text,
         "",
         "=== DRIVER INFORMATION ===",
         f"Driver Name: {driver_name}",
@@ -580,7 +761,22 @@ def generate_enhanced_conversational_prompt(
     prompt_parts.append("- Keep it SHORT and conversational")
     prompt_parts.append("- Sound human, not robotic")
 
-    return "\n".join(prompt_parts)
+    final_prompt = "\n".join(prompt_parts)
+
+    # LOG: Final generated prompt
+    print("\n" + "=" * 100)
+    print("📝 FINAL GENERATED PROMPT")
+    print("=" * 100)
+    print(f"Driver: {driver_name}")
+    print(f"Number of bullet points: {len(bullets)}")
+    print(f"Custom rules: {custom_rules if custom_rules else 'None'}")
+    print("\n" + "-" * 100)
+    print("FULL PROMPT:")
+    print("-" * 100)
+    print(final_prompt)
+    print("=" * 100 + "\n")
+
+    return final_prompt
 
 
 # -------------------------------
@@ -705,6 +901,7 @@ async def generate_prompt_for_driver(request):
     Returns:
         Dictionary with prompt and metadata
     """
+    print(f"GENERATE PROMPT IS CALLED")
     try:
         from models.vapi import GeneratePromptRequest
 
@@ -779,6 +976,37 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
     Note: Even though the request has a 'drivers' array, only ONE driver is sent per call.
     """
     try:
+        # LOG 1: Print full incoming payload
+        print("\n" + "=" * 100)
+        print("📥 INCOMING PAYLOAD - Full Request Received")
+        print("=" * 100)
+        print(f"Call Type: {request.callType}")
+        print(f"Timestamp: {request.timestamp}")
+        print(f"Number of Drivers: {len(request.drivers)}")
+        import json
+        print("\nFull Payload JSON:")
+        print(json.dumps({
+            "callType": request.callType,
+            "timestamp": request.timestamp,
+            "drivers": [
+                {
+                    "driverId": d.driverId,
+                    "driverName": d.driverName,
+                    "phoneNumber": d.phoneNumber,
+                    "customRules": d.customRules,
+                    "violations": {
+                        "tripId": d.violations.tripId if d.violations else None,
+                        "violationDetails": [
+                            {"type": v.type, "description": v.description}
+                            for v in (d.violations.violationDetails if d.violations else [])
+                        ]
+                    }
+                }
+                for d in request.drivers
+            ]
+        }, indent=2))
+        print("=" * 100 + "\n")
+
         # Get the first (and only) driver from the array
         if not request.drivers or len(request.drivers) == 0:
             raise HTTPException(status_code=400, detail="No driver data provided")
@@ -824,6 +1052,12 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             )
             response.raise_for_status()
             webhook_response = response.json()
+
+            print("------------------------------------------------------------------------------------------")
+            print("------------------------------------------------------------------------------------------")
+            print("WEBHOOK RESPONSE")
+            print("------------------------------------------------------------------------------------------")
+            print(webhook_response)
 
         logger.info(f"✅ Call initiated successfully for {driver.driverName}")
 
