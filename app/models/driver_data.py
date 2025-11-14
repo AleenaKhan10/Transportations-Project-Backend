@@ -675,6 +675,16 @@ def generate_enhanced_conversational_prompt(
     print(f"Total items to process: {len(violations) if violations else 0}")
     print("=" * 100)
 
+    # Define reminder prompt names
+    REMINDER_PROMPTS = {
+        "verify_load_pallet_count",
+        "send_loaded_picture",
+        "send_seal_pictures",
+        "secure_load_pictures",
+        "check_destination_bol",
+        "wait_for_approval"
+    }
+
     # Process ONLY the violations sent from frontend
     if violations:
         for idx, violation in enumerate(violations, 1):
@@ -686,18 +696,14 @@ def generate_enhanced_conversational_prompt(
             # Try to map the description to a prompt_name from the database
             prompt_name = map_description_to_prompt_name(v_desc)
 
-            # Check if this is a reminder type
-            if v_type == "reminder":
-                # Fetch reminder prompt from database using mapping
-                if prompt_name:
-                    logger.info(f"Processing REMINDER: {prompt_name}")
-                    prompt_text = build_reminder_prompt(violation.type, v_desc)
-                else:
-                    # Fallback to original description if no mapping found
-                    prompt_text = v_desc
+            # Check if the mapped prompt_name is a reminder (not v_type)
+            if prompt_name and prompt_name in REMINDER_PROMPTS:
+                # This is a reminder - fetch from database
+                logger.info(f"Processing REMINDER: {prompt_name}")
+                prompt_text = build_reminder_prompt(violation.type, v_desc)
 
-            # Build data-driven prompts with actual trip data
-            elif v_type == "violation" and trip_data and prompt_name:
+            # Check if the mapped prompt_name is a violation (data-driven)
+            elif prompt_name and trip_data:
                 logger.info(f"Processing VIOLATION: {prompt_name}")
 
                 # Call appropriate builder function based on mapped prompt_name
@@ -714,8 +720,24 @@ def generate_enhanced_conversational_prompt(
                 else:
                     # Fallback for unmapped violations
                     prompt_text = v_desc
+
+            # If we have a prompt_name but no trip_data, use condition_false_prompt
+            elif prompt_name and not trip_data:
+                logger.warning(f"No trip_data available for {prompt_name}, using condition_false_prompt")
+                print(f"   ⚠️  No trip data - fetching FALSE condition prompt for: {prompt_name}")
+
+                prompt_record = get_prompt_from_db(prompt_name)
+                if prompt_record and prompt_record.condition_false_prompt:
+                    prompt_text = prompt_record.condition_false_prompt
+                    print(f"   ✅ Using FALSE prompt: {prompt_text[:60]}...")
+                else:
+                    # Ultimate fallback: use description
+                    print(f"   ⚠️  FALSE prompt not found, using description")
+                    prompt_text = v_desc
+
             else:
-                # Fallback: use original description if no trip data or mapping
+                # Fallback: use original description if no mapping found
+                print(f"   ⚠️  No mapping found for description, using original text")
                 prompt_text = v_desc
 
             # Only add if prompt_text is not None (skip filtered violations)
