@@ -374,6 +374,9 @@ class ActiveLoadTracking(SQLModel, table=True):
         with cls.get_session() as session:
             try:
                 # Build dynamic SQL based on provided fields
+                # Use exclude_unset=True to only get fields that were actually sent in the payload
+                payload_dict = record_data.model_dump(exclude_unset=True)
+
                 provided_fields = []
                 provided_values = {}
                 update_clauses = []
@@ -382,34 +385,31 @@ class ActiveLoadTracking(SQLModel, table=True):
                 provided_fields.append("load_id")
                 provided_values["load_id"] = record_data.load_id
 
-                # Check each field and only include if it's not None
+                # Always include timestamps
                 current_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-                field_mappings = {
-                    "trip_id": record_data.trip_id,
-                    "vehicle_id": record_data.vehicle_id,
-                    "driver_name": record_data.driver_name,
-                    "driver_phone_number": record_data.driver_phone_number,
-                    "truck_unit": record_data.truck_unit,
-                    "start_time": record_data.start_time,
-                    "start_odometer_miles": record_data.start_odometer_miles,
-                    "current_odometer_miles": record_data.current_odometer_miles,
-                    "miles_threshold": record_data.miles_threshold,
-                    "current_stop_start": record_data.current_stop_start,
-                    "total_distance_traveled": record_data.total_distance_traveled,
-                    "last_alert_sent": record_data.last_alert_sent,
-                    "last_known_lat": record_data.last_known_lat,
-                    "last_known_lng": record_data.last_known_lng,
-                    "status": record_data.status,
-                    "violation_resolved": record_data.violation_resolved,
-                    "mute_flag": record_data.mute_flag,
-                    "created_at": current_time,  # Always set for new records
-                    "updated_at": current_time,
-                }
+                provided_fields.extend(["created_at", "updated_at"])
+                provided_values["created_at"] = current_time
+                provided_values["updated_at"] = current_time
+                update_clauses.extend([
+                    '"created_at" = EXCLUDED."created_at"',
+                    '"updated_at" = EXCLUDED."updated_at"'
+                ])
 
-                for field_name, field_value in field_mappings.items():
-                    if field_value is not None:
+                # Process all fields that were explicitly provided in the payload
+                # This includes fields set to null - they will update the DB to null
+                field_names = [
+                    "trip_id", "vehicle_id", "driver_name", "driver_phone_number",
+                    "truck_unit", "start_time", "start_odometer_miles",
+                    "current_odometer_miles", "miles_threshold", "current_stop_start",
+                    "total_distance_traveled", "last_alert_sent", "last_known_lat",
+                    "last_known_lng", "status", "violation_resolved", "mute_flag"
+                ]
+
+                for field_name in field_names:
+                    # Check if field was provided in payload (even if it's null)
+                    if field_name in payload_dict:
                         provided_fields.append(field_name)
-                        provided_values[field_name] = field_value
+                        provided_values[field_name] = payload_dict[field_name]
                         update_clauses.append(
                             f'"{field_name}" = EXCLUDED."{field_name}"'
                         )
