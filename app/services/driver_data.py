@@ -10,6 +10,7 @@ from models.driver_data import (
 
 from models.vapi import BatchCallRequest, GeneratePromptRequest
 from models.driver_triggers_violations_calls import DriverTriggersViolationCalls
+from datetime import datetime, timezone
 
 # Router with prefix + tags
 router = APIRouter(prefix="/driver_data", tags=["driver_data"])
@@ -106,74 +107,93 @@ CALL_TRANSCRIPTS = {}
 @router.post("/call/webhook")
 async def elevenlabs_call_webhook(request: Request):
     """
-    Receives events from ElevenLabs:
-    - conversation.transcript → accumulates transcript
-    - call.completed → updates DB with summary, transcript, duration
+    Handles ElevenLabs post-call webhook:
+    - Extracts conversation_id (your call_id)
+    - Extracts full transcript (array of messages)
+    - Extracts summary & call duration
+    - Updates DB by call_id
     """
-    print(
-        "-------------------------------------------------------------------------------------------"
-    )
-    print(request)
     try:
         body = await request.json()
+        print("---- ElevenLabs Webhook Received ----")
         print(body)
-        event = body.get("event")
-        call_id = body.get("call_id") or body.get("callContextId")
-        metadata = body.get("metadata", {})
+        print("---- BODY ENDS ----")
 
-        if not event:
-            return {"status": "ignored_no_event"}
+        # ----------------------------
+        # VALIDATE ROOT STRUCTURE
+        # ----------------------------
+        event_type = body.get("type")  # e.g. "post_call_transcription"
+        data = body.get("data", {})
 
-        # ---------------- Transcript chunk ----------------
-        if event == "conversation.transcript":
-            text = body.get("transcript") or ""
-            CALL_TRANSCRIPTS.setdefault(call_id, "")
-            CALL_TRANSCRIPTS[call_id] += text + "\n"
-            return {"status": "transcript_saved"}
+        if not data:
+            return {"status": "ignored_no_data"}
 
-        # ---------------- Call completed ----------------
-        elif event == "call.completed":
-            summary = body.get("summary", "")
-            duration = body.get("duration", 0)
-            final_transcript = CALL_TRANSCRIPTS.get(call_id, "")
+        # ----------------------------
+        # EXTRACT IMPORTANT FIELDS
+        # ----------------------------
+        call_id = data.get("conversation_id")  # This will act as our Call ID
+        transcript_list = data.get("transcript", [])
+        metadata = data.get("metadata", {})
 
-            update_payload = {
-                "call_id": call_id,
-                "call_summary": summary,
-                "call_transcript": final_transcript,
-                "call_duration": duration,
-                "call_status": "completed",
-            }
+        call_duration = metadata.get("call_duration_secs", 0)
+        # Call SID
+        call_sid = metadata.get("phone_call", {}).get("call_sid")
+        # Transcript Summary
+        call_summary = metadata.get("analysis", {}).get("transcript_summary")
+        # Call Status
+        call_status = metadata.get("analysis", {}).get("call_successful")
+        # Ended Reason
+        termination_reason = metadata.get("termination_reason", {})
+        # Call Start Time
+        unix_start = metadata.get("start_time_unix_secs", {})
+        # Call End Time Time
+        unix_end = metadata.get("start_time_unix_secs", {}) + call_duration
 
-            print(
-                "-------------------------------------------------------------------------------------------"
-            )
-            print(
-                "------------------------------------------------------------------------------------------"
-            )
-            print("WEBHOOK RESPONSE UPDATED DATA")
-            print(
-                "------------------------------------------------------------------------------------------"
-            )
-            print(update_payload)
+        # Convert UNIX seconds → UTC datetime
+        call_start_time = datetime.fromtimestamp(unix_start, tz=timezone.utc)
+        call_end_time = datetime.fromtimestamp(unix_end, tz=timezone.utc)
+        print("---- Call Sid ----")
+        print(call_sid)
 
-            # DriverTriggersViolationCalls.create_violation_data(update_payload)
-            DriverTriggersViolationCalls.update_violation_by_call_id(
-                call_id, update_payload
-            )
+        # ----------------------------
+        # FORMAT FULL TRANSCRIPT TEXT
+        # ----------------------------
+        full_transcript = ""
+        for msg in transcript_list:
+            role = msg.get("role", "unknown")
+            text = msg.get("message") or ""
+            full_transcript += f"{role.upper()}: {text}\n"
 
-            # Clean up memory
-            if call_id in CALL_TRANSCRIPTS:
-                del CALL_TRANSCRIPTS[call_id]
+        # ----------------------------
+        # BUILD PAYLOAD FOR DATABASE
+        # ----------------------------
+        update_payload = {
+            "call_summary": call_summary,
+            "transcript": full_transcript,
+            "call_duration": call_duration,
+            "call_status": call_status,
+            "call_picked_up": True,
+            "ended_reason": termination_reason,
+            "started_at": call_start_time,
+            "ended_at": call_end_time,
+        }
 
-            return {"status": "saved_to_database"}
+        print("---- FINAL UPDATE PAYLOAD ----")
+        print(update_payload)
 
-        else:
-            return {"status": "ignored_event_type"}
+        # ----------------------------
+        # UPDATE IN DATABASE
+        # ----------------------------
+        DriverTriggersViolationCalls.update_violation_by_call_id(
+            call_sid, update_payload
+        )
+
+        return {"status": "saved_to_database"}
 
     except Exception as e:
         import traceback
 
         raise HTTPException(
-            status_code=500, detail=f"Webhook error: {str(e)}\n{traceback.format_exc()}"
+            status_code=500,
+            detail=f"Webhook parsing error: {str(e)}\n{traceback.format_exc()}",
         )

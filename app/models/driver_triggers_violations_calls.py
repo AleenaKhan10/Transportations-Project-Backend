@@ -93,6 +93,9 @@ class DriverTriggersViolationCalls(SQLModel, table=True):
         Update a violation call record by call_id.
         `data` is a dict of fields to update.
         """
+
+        print("---- ElevenLabs Webhook Received Updated Query Call Sid ----")
+        print(call_id)
         with cls.get_session() as session:
             statement = select(cls).where(cls.call_id == call_id)
             record = session.exec(statement).first()
