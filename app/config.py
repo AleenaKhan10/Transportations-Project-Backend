@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     VAPI_V_PHONE_NUMBER_ID: str = "dbf1e2f9-5820-4411-b2e9-b263fdad5aad"
     VAPI_V_API_KEY: str = "42cd6dd5-a268-42da-a2ba-f4f343ec023c"
 
+    # ElevenLabs settings
+    ELEVENLABS_API_KEY: str
+
     # Application settings
     PORT: int = 8000
 

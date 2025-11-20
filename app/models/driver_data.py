@@ -1105,3 +1105,175 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             status_code=500,
             detail=f"Call error: {str(err)}"
         )
+
+
+async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest):
+    """
+    Process driver violation call using ElevenLabs API.
+
+    This function processes a batch call request for driver violations using ElevenLabs
+    conversational AI instead of VAPI. It maintains the same request/response structure
+    as the VAPI implementation for compatibility.
+
+    Note: Even though the request has a 'drivers' array, only ONE driver (the first) is processed per call.
+
+    Args:
+        request: BatchCallRequest containing call metadata and driver violation details
+
+    Returns:
+        Dictionary with call success information, conversation_id, and driver details
+
+    Raises:
+        HTTPException: 400 if no driver data provided, 500 if call creation fails
+    """
+    try:
+        # Import required dependencies
+        import json
+        from utils.elevenlabs_client import elevenlabs_client
+
+        # LOG 1: Print full incoming payload
+        print("\n" + "=" * 100)
+        print("INCOMING PAYLOAD - Full Request Received")
+        print("=" * 100)
+        print(f"Call Type: {request.callType}")
+        print(f"Timestamp: {request.timestamp}")
+        print(f"Number of Drivers: {len(request.drivers)}")
+        print("\nFull Payload JSON:")
+        print(json.dumps({
+            "callType": request.callType,
+            "timestamp": request.timestamp,
+            "drivers": [
+                {
+                    "driverId": d.driverId,
+                    "driverName": d.driverName,
+                    "phoneNumber": d.phoneNumber,
+                    "customRules": d.customRules,
+                    "violations": {
+                        "tripId": d.violations.tripId if d.violations else None,
+                        "violationDetails": [
+                            {"type": v.type, "description": v.description}
+                            for v in (d.violations.violationDetails if d.violations else [])
+                        ]
+                    }
+                }
+                for d in request.drivers
+            ]
+        }, indent=2))
+        print("=" * 100 + "\n")
+
+        # Get the first (and only) driver from the array
+        if not request.drivers or len(request.drivers) == 0:
+            raise HTTPException(status_code=400, detail="No driver data provided")
+
+        driver = request.drivers[0]  # Only one driver per call
+
+        logger.info(f"Processing ElevenLabs call for driver: {driver.driverName} ({driver.driverId})")
+
+        # Normalize phone number to E.164 format
+        phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
+        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+
+        print("\n" + "=" * 100)
+        print("PHONE NUMBER NORMALIZATION")
+        print("=" * 100)
+        print(f"Original: {driver.phoneNumber}")
+        print(f"Normalized: {normalized_phone}")
+        print("=" * 100 + "\n")
+
+        # Generate dynamic prompt using existing function
+        logger.info(f"Generating conversational prompt for {driver.driverName}")
+
+        # Fetch trip data for generating personalized prompts
+        trip_id = driver.violations.tripId if driver.violations else None
+        trip_data = get_trip_data_for_violations(
+            trip_id=trip_id or "",
+            driver_id=driver.driverId
+        )
+
+        # Convert violations to format expected by prompt generation function
+        violation_details = []
+        if driver.violations and driver.violations.violationDetails:
+            for v in driver.violations.violationDetails:
+                # Create simple object with type and description attributes
+                violation_obj = type('ViolationObj', (object,), {
+                    'type': v.type,
+                    'description': v.description
+                })()
+                violation_details.append(violation_obj)
+
+        # Generate the prompt
+        prompt_text = generate_enhanced_conversational_prompt(
+            driver_name=driver.driverName,
+            violations=violation_details,
+            reminders=[],
+            trip_data=trip_data,
+            custom_rules=driver.customRules
+        )
+
+        logger.info(f"Prompt generated successfully - Length: {len(prompt_text)} characters")
+
+        print("\n" + "=" * 100)
+        print("GENERATED PROMPT")
+        print("=" * 100)
+        print(f"Prompt Length: {len(prompt_text)} characters")
+        print(f"Violations Count: {len(violation_details)}")
+        print(f"Trip Data Available: {bool(trip_data)}")
+        print("=" * 100 + "\n")
+
+        # Call ElevenLabs client with generated data
+        # For now, use hardcoded defaults for optional parameters
+        transfer_to = "+18005551234"  # Default transfer number
+        call_sid = f"EL_{driver.driverId}_{request.timestamp}"  # Generate unique call SID
+        dispatcher_name = "AGY Dispatcher"  # Default dispatcher name
+
+        logger.info(f"Initiating ElevenLabs call to {normalized_phone}")
+
+        try:
+            elevenlabs_response = await elevenlabs_client.create_outbound_call(
+                to_number=normalized_phone,
+                prompt=prompt_text,
+                transfer_to=transfer_to,
+                call_sid=call_sid,
+                dispatcher_name=dispatcher_name
+            )
+
+            logger.info(f"ElevenLabs call initiated successfully - Conversation ID: {elevenlabs_response.get('conversation_id')}")
+
+        except Exception as client_err:
+            logger.error(f"ElevenLabs client error: {str(client_err)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initiate ElevenLabs call: {str(client_err)}"
+            )
+
+        # Build and return success response
+        logger.info(f"Call initiated successfully for {driver.driverName}")
+
+        return {
+            "message": "Call initiated successfully via ElevenLabs",
+            "timestamp": request.timestamp,
+            "driver": {
+                "driverId": driver.driverId,
+                "driverName": driver.driverName,
+                "phoneNumber": normalized_phone,
+            },
+            "conversation_id": elevenlabs_response.get("conversation_id"),
+            "callSid": elevenlabs_response.get("callSid"),
+            "triggers_count": len(violation_details),
+        }
+
+    except HTTPException:
+        # Re-raise HTTPException as-is (preserves status codes)
+        raise
+    except Exception as err:
+        # Log error with full traceback
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Error making ElevenLabs driver call: {err}", exc_info=True)
+        logger.error(f"Full traceback:\n{error_details}")
+
+        # Raise user-friendly error
+        raise HTTPException(
+            status_code=500,
+            detail=f"Call error: {str(err)}"
+        )
