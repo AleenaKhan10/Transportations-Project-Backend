@@ -1,0 +1,5 @@
+task_groups:
+  - name: Configuration and Client Setup
+  - name: Driver Violation Batch Call Function
+  - name: FastAPI Endpoint Implementation
+  - name: Integration Testing and Documentation

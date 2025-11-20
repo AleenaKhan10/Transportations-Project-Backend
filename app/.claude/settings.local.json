@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cmd /c \"%USERPROFILE%\\.claude-code-project-index\\scripts\\project-index-helper.cmd\")"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
