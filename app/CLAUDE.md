@@ -56,6 +56,7 @@ app/
 │   └── cloud_logger.py
 └── utils/                    # External service clients
     ├── vapi_client.py       # VAPI AI call integration
+    ├── elevenlabs_client.py # ElevenLabs conversational AI integration
     ├── weather_api.py
     └── call_insights.py
 
@@ -74,6 +75,7 @@ cloud_functions/              # Google Cloud Functions
 
 - **Authentication**: JWT-based with refresh tokens, sessions, and audit logging
 - **VAPI**: AI-powered driver call system with campaign management
+- **ElevenLabs**: Conversational AI for driver violation calls (independent alternative to VAPI)
 - **Samsara**: Fleet management data ingestion
 - **Ditat**: Alternative data source ingestion
 - **Slack**: Alert delivery via bot integration
@@ -94,7 +96,7 @@ cloud_functions/              # Google Cloud Functions
 All configuration via [config.py](config.py) using Pydantic Settings:
 - Database credentials (DB_USER, DB_PASS, DB_HOST, DB_NAME, DB_PORT)
 - Cloud Run settings (INSTANCE_UNIX_SOCKET, CLOUD_RUN_URL)
-- API tokens (DITAT_TOKEN, SAMSARA_TOKEN, VAPI_API_KEY, etc.)
+- API tokens (DITAT_TOKEN, SAMSARA_TOKEN, VAPI_API_KEY, ELEVENLABS_API_KEY, etc.)
 - External service keys (PCMILER_API_KEY, WEATHER_API_KEY, SLACK_BOT_TOKEN)
 - JWT settings (SECRET_KEY, ALGORITHM)
 - Email/SMTP configuration
@@ -151,6 +153,28 @@ class MyModel(SQLModel, table=True):
 - Sentry integration filters out HTTPException and ValidationError
 - Only errors with severity 'error' or 'fatal' are captured
 - Critical API failures automatically logged to Sentry
+
+### ElevenLabs Call Workflow (Alternative to VAPI)
+1. Driver data retrieved from database
+2. Phone number normalized to E.164 format
+3. Dynamic prompt generated using existing prompt generation logic
+4. Call initiated via [utils/elevenlabs_client.py](utils/elevenlabs_client.py)
+5. Response includes conversation_id and callSid for tracking
+6. Endpoint: POST /driver_data/call-elevenlabs
+7. Independent implementation - can coexist with VAPI or replace it
+
+**Key Features:**
+- Processes single driver per request (matches VAPI pattern)
+- Comprehensive retry logic with exponential backoff (3 attempts)
+- Detailed logging with structured sections
+- Hardcoded agent configuration (future: configurable from frontend)
+- US phone number support with E.164 normalization
+
+**Limitations:**
+- No webhook handling (call status updates not processed)
+- Single driver processing only (first in array)
+- Hardcoded agent ID and phone number ID
+- See agent-os/specs/elevenlabs-integration/planning/limitations.md
 
 ### VAPI Call Workflow
 1. Driver data retrieved from database
