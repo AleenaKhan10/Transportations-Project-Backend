@@ -1,5 +1,17 @@
 task_groups:
   - name: Configuration and Client Setup
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
   - name: Driver Violation Batch Call Function
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
   - name: FastAPI Endpoint Implementation
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
   - name: Integration Testing and Documentation
+    claude_code_subagent: qa-expert
+    standards:
+      - backend/*
