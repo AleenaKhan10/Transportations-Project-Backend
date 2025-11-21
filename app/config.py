@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     WEATHER_API_KEY: str = ""
     WEATHER_API_BASE_URL: str = "http://api.weatherapi.com/v1"
 
+    # ElevenLabs settings
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_AGENT_ID: str = ""
+    ELEVENLABS_AGENT_PHONE_NUMBER_ID: str = ""
+    ELEVENLABS_DISPATCHER_TRANSFER_NUMBER: str = "+923282828886"  # Hardcoded dispatcher transfer number
+
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"
     SMTP_PORT: int = 587

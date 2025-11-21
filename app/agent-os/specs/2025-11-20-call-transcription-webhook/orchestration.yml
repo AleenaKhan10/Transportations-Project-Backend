@@ -1,0 +1,17 @@
+task_groups:
+  - name: Data Models and Schema
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Helper Functions and Business Logic
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Webhook Endpoint Implementation
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Integration Testing and Documentation
+    claude_code_subagent: qa-expert
+    standards:
+      - backend/*
