@@ -22,7 +22,7 @@ class TestCallModel:
     def test_create_call_with_call_sid_has_null_conversation_id(self):
         """Test that create_call_with_call_sid creates record with NULL conversation_id."""
         call_sid = "EL_123_test_create"
-        driver_id = 123
+        driver_id = None  # NULL to avoid FK constraint
         call_start_time = datetime.now(timezone.utc)
 
         # Create call using new method
@@ -50,7 +50,7 @@ class TestCallModel:
     def test_get_by_call_sid_retrieves_correct_record(self):
         """Test that get_by_call_sid retrieves the correct Call record."""
         call_sid = "EL_456_test_get"
-        driver_id = 456
+        driver_id = None
 
         # Create test call
         call = Call.create_call_with_call_sid(
@@ -83,7 +83,7 @@ class TestCallModel:
         # Create call without conversation_id
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=789,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
 
@@ -112,7 +112,7 @@ class TestCallModel:
         # Create call with IN_PROGRESS status
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=111,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
 
@@ -147,7 +147,7 @@ class TestCallModel:
         # Create call
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=222,
+            driver_id=None,
             call_start_time=call_start_time
         )
 
@@ -181,7 +181,7 @@ class TestCallModel:
         # Create call
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=333,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
 

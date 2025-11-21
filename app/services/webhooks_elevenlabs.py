@@ -44,32 +44,21 @@ class TranscriptionWebhookRequest(BaseModel):
         call_sid: Our generated call identifier (format: EL_{driverId}_{timestamp})
         speaker: Speaker attribution - 'agent' or 'user' (required)
         message: The dialogue message text (required)
-        timestamp: ISO8601 timestamp when dialogue occurred (required)
 
     Note:
-        ElevenLabs echoes back the call_sid we provide in create_outbound_call request.
-        This allows us to track calls from initiation through completion.
+        - ElevenLabs echoes back the call_sid we provide in create_outbound_call request
+        - Timestamp is automatically generated server-side when webhook is received
+        - This allows us to track calls from initiation through completion
     """
     call_sid: str = Field(..., min_length=1, description="Generated call identifier (format: EL_{driverId}_{timestamp})")
     speaker: str = Field(..., description="Speaker attribution - 'agent' or 'user'")
     message: str = Field(..., min_length=1, description="The dialogue message text")
-    timestamp: str = Field(..., description="ISO8601 timestamp when dialogue occurred")
 
     @validator('speaker')
     def validate_speaker(cls, v):
         """Validate that speaker is either 'agent' or 'user'."""
         if v not in ['agent', 'user']:
             raise ValueError("speaker must be 'agent' or 'user'")
-        return v
-
-    @validator('timestamp')
-    def validate_timestamp(cls, v):
-        """Validate that timestamp is in valid ISO8601 format."""
-        try:
-            # Try to parse the timestamp to ensure it's valid
-            datetime.fromisoformat(v.replace('Z', '+00:00'))
-        except (ValueError, AttributeError):
-            raise ValueError("timestamp must be a valid ISO8601 format")
         return v
 
 
@@ -132,28 +121,31 @@ async def receive_transcription(request: TranscriptionWebhookRequest):
     - Speaker mapping from ElevenLabs format to internal format
     - Sequence number generation
     - Transcription storage
+    - Automatic timestamp generation (server-side)
 
     Refactored Flow:
     1. Receive call_sid from ElevenLabs webhook
-    2. Look up Call record by call_sid (may fail if Call not found)
-    3. Extract conversation_id from Call (may fail if NULL)
-    4. Save CallTranscription with conversation_id FK
-    5. Return success with transcription_id and sequence_number
+    2. Auto-generate timestamp (server-side UTC)
+    3. Look up Call record by call_sid (may fail if Call not found)
+    4. Extract conversation_id from Call (may fail if NULL)
+    5. Save CallTranscription with conversation_id FK
+    6. Return success with transcription_id and sequence_number
 
     ElevenLabs guarantees sequential webhook calls per conversation,
     so no concurrency control is needed.
 
     Args:
-        request: Validated webhook request with call_sid, speaker, message, timestamp
+        request: Validated webhook request with call_sid, speaker, message
 
     Returns:
         201 Created: TranscriptionWebhookSuccessResponse with transcription_id and sequence_number
-        400 Bad Request: Invalid speaker, timestamp, or call_sid not found/incomplete
+        400 Bad Request: Invalid speaker or call_sid not found/incomplete
         500 Internal Server Error: Database connection failure or unexpected error
 
     Note:
         This is a public endpoint with no authentication (optimized for performance).
         Errors never return 200 OK to allow ElevenLabs to retry failed saves.
+        Timestamp is automatically generated server-side when webhook is received.
     """
     logger.info("=" * 100)
     logger.info(f"ElevenLabs Transcription Webhook - Received request for call_sid: {request.call_sid}")
@@ -161,26 +153,15 @@ async def receive_transcription(request: TranscriptionWebhookRequest):
     logger.info("=" * 100)
 
     try:
-        # Parse and validate timestamp
-        try:
-            timestamp_dt = datetime.fromisoformat(request.timestamp.replace('Z', '+00:00'))
-            # Ensure timezone-aware
-            timestamp_dt = make_timezone_aware(timestamp_dt)
-        except (ValueError, AttributeError) as e:
-            logger.error(f"Invalid timestamp format: {request.timestamp} - {str(e)}")
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "status": "error",
-                    "message": "Invalid timestamp format. Expected ISO8601 format.",
-                    "details": str(e)
-                }
-            )
+        # Auto-generate timestamp (server-side UTC)
+        from datetime import timezone as tz
+        timestamp_dt = datetime.now(tz.utc)
+        logger.info(f"Auto-generated timestamp: {timestamp_dt.isoformat()}")
 
         # Call save_transcription orchestration function (now uses call_sid)
         try:
             transcription_id, sequence_number = save_transcription(
-                call_sid=request.call_sid,  # CHANGED: was conversation_id
+                call_sid=request.call_sid,
                 speaker=request.speaker,
                 message=request.message,
                 timestamp=timestamp_dt

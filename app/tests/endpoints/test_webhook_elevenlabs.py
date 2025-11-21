@@ -32,7 +32,7 @@ class TestWebhookEndpoint:
         # Setup: Create Call record with conversation_id
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=11111,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
         Call.update_conversation_id(call_sid, conversation_id)
@@ -95,7 +95,7 @@ class TestWebhookEndpoint:
         # Create Call WITHOUT conversation_id (simulates API call hasn't completed)
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=22222,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
 
@@ -133,7 +133,7 @@ class TestWebhookEndpoint:
         # STEP 1: Create Call record (simulates what happens in make_drivers_violation_batch_call_elevenlabs)
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=33333,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc),
             status=CallStatus.IN_PROGRESS
         )
@@ -187,7 +187,7 @@ class TestWebhookEndpoint:
         # Create Call record
         call = Call.create_call_with_call_sid(
             call_sid=call_sid,
-            driver_id=44444,
+            driver_id=None,
             call_start_time=datetime.now(timezone.utc)
         )
 

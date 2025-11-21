@@ -17,7 +17,7 @@ Workflow:
 from typing import Optional
 from datetime import datetime, timezone
 from sqlmodel import Field, SQLModel, Session, select, Column
-from sqlalchemy import Index, UniqueConstraint, DateTime
+from sqlalchemy import Index, UniqueConstraint, DateTime, ForeignKey
 from enum import Enum
 from db.database import engine
 from db.retry import db_retry
@@ -63,7 +63,7 @@ class Call(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     call_sid: str = Field(max_length=255, nullable=False, index=True, unique=True)
     conversation_id: Optional[str] = Field(max_length=255, nullable=True, index=True, unique=True)
-    driver_id: Optional[int] = Field(default=None, nullable=True)
+    driver_id: Optional[str] = Field(default=None, nullable=True)
     call_start_time: datetime = Field(sa_column=Column(DateTime(timezone=True), nullable=False))
     call_end_time: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
     status: CallStatus = Field(default=CallStatus.IN_PROGRESS, nullable=False)
@@ -80,7 +80,7 @@ class Call(SQLModel, table=True):
     def create_call_with_call_sid(
         cls,
         call_sid: str,
-        driver_id: int,
+        driver_id: str,
         call_start_time: datetime,
         status: CallStatus = CallStatus.IN_PROGRESS
     ) -> "Call":
@@ -225,7 +225,7 @@ class Call(SQLModel, table=True):
     def create_call(
         cls,
         conversation_id: str,
-        driver_id: Optional[int],
+        driver_id: Optional[str],
         call_start_time: datetime
     ) -> "Call":
         """
