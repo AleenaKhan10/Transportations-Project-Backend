@@ -1226,6 +1226,36 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         call_sid = f"EL_{driver.driverId}_{request.timestamp}"  # Generate unique call SID
         dispatcher_name = "AGY Dispatcher"  # Default dispatcher name
 
+        # STEP 1: Create Call record BEFORE calling ElevenLabs
+        # This enables proactive tracking of all call attempts (including failures)
+        logger.info("=" * 100)
+        logger.info(f"STEP 1: Creating Call record for call_sid: {call_sid}")
+        logger.info("=" * 100)
+
+        from models.call import Call, CallStatus
+        from datetime import datetime, timezone
+
+        try:
+            call_record = Call.create_call_with_call_sid(
+                call_sid=call_sid,
+                driver_id=driver.driverId,
+                call_start_time=datetime.now(timezone.utc),
+                status=CallStatus.IN_PROGRESS
+            )
+            logger.info(f"Call record created successfully - ID: {call_record.id}, call_sid: {call_sid}")
+            logger.info(f"Call record has conversation_id=NULL (will be updated after ElevenLabs responds)")
+
+        except Exception as db_err:
+            logger.error(f"Failed to create Call record: {str(db_err)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create call record in database: {str(db_err)}"
+            )
+
+        logger.info("=" * 100)
+        logger.info(f"STEP 2: Initiating ElevenLabs API call to {normalized_phone}")
+        logger.info("=" * 100)
+
         logger.info(f"Initiating ElevenLabs call to {normalized_phone}")
 
         try:
@@ -1239,7 +1269,30 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
 
             logger.info(f"ElevenLabs call initiated successfully - Conversation ID: {elevenlabs_response.get('conversation_id')}")
 
+            # STEP 3: Update Call record with conversation_id from ElevenLabs
+            try:
+                Call.update_conversation_id(
+                    call_sid=call_sid,
+                    conversation_id=elevenlabs_response.get("conversation_id")
+                )
+                logger.info(f"Updated Call record with conversation_id: {elevenlabs_response.get('conversation_id')}")
+
+            except Exception as update_err:
+                logger.error(f"Failed to update Call with conversation_id: {str(update_err)}", exc_info=True)
+                # Don't fail the request - Call record exists, webhook can still work with call_sid
+
+
         except Exception as client_err:
+            # Update Call status to FAILED since ElevenLabs API call failed
+            try:
+                Call.update_status_by_call_sid(
+                    call_sid=call_sid,
+                    status=CallStatus.FAILED
+                )
+                logger.info(f"Updated Call record status to FAILED for call_sid: {call_sid}")
+            except Exception as status_err:
+                logger.error(f"Failed to update Call status: {str(status_err)}", exc_info=True)
+
             logger.error(f"ElevenLabs client error: {str(client_err)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
@@ -1257,6 +1310,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 "driverName": driver.driverName,
                 "phoneNumber": normalized_phone,
             },
+            "call_sid": call_sid,
             "conversation_id": elevenlabs_response.get("conversation_id"),
             "callSid": elevenlabs_response.get("callSid"),
             "triggers_count": len(violation_details),

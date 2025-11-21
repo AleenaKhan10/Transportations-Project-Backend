@@ -155,23 +155,16 @@ class MyModel(SQLModel, table=True):
 - Only errors with severity 'error' or 'fatal' are captured
 - Critical API failures automatically logged to Sentry
 
-### ElevenLabs Call Workflow (Refactored - November 2025)
-
-**Proactive Call Tracking with call_sid:**
-
-1. Generate call_sid (format: EL_{driverId}_{timestamp})
-2. Create Call record BEFORE ElevenLabs API call (conversation_id=NULL, status=IN_PROGRESS)
-3. Phone number normalized to E.164 format
-4. Dynamic prompt generated using existing prompt generation logic
-5. Call initiated via [utils/elevenlabs_client.py](utils/elevenlabs_client.py) with call_sid
-6. Update Call record with conversation_id from ElevenLabs response (or status=FAILED if API fails)
-7. Endpoint: POST /driver_data/call-elevenlabs
-8. Independent implementation - can coexist with VAPI or replace it
+### ElevenLabs Call Workflow (Alternative to VAPI)
+1. Driver data retrieved from database
+2. Phone number normalized to E.164 format
+3. Dynamic prompt generated using existing prompt generation logic
+4. Call initiated via [utils/elevenlabs_client.py](utils/elevenlabs_client.py)
+5. Response includes conversation_id and callSid for tracking
+6. Endpoint: POST /driver_data/call-elevenlabs
+7. Independent implementation - can coexist with VAPI or replace it
 
 **Key Features:**
-- Proactive Call record creation enables complete audit trail (including failed calls)
-- call_sid (our identifier) used for initial tracking
-- conversation_id (ElevenLabs identifier) populated after successful API call
 - Processes single driver per request (matches VAPI pattern)
 - Comprehensive retry logic with exponential backoff (3 attempts)
 - Detailed logging with structured sections
@@ -181,25 +174,13 @@ class MyModel(SQLModel, table=True):
 **Limitations:**
 - Single driver processing only (first in array)
 - Hardcoded agent ID and phone number ID
-- See agent-os/specs/2025-11-20-call-transcription-webhook/planning/limitations.md
+- See agent-os/specs/elevenlabs-integration/planning/limitations.md
 
-**Webhook Integration (Refactored):**
-- POST /webhooks/elevenlabs/transcription receives call_sid (not conversation_id)
-- Two-step lookup pattern: call_sid -> Call -> conversation_id
+**Webhook Integration:**
+- POST /webhooks/elevenlabs/transcription receives real-time call transcriptions
 - Stores dialogue turns with speaker attribution and sequencing
-- Returns 400 Bad Request if Call not found or has NULL conversation_id
+- Automatically creates Call records on first dialogue
 - See [services/webhooks_elevenlabs.py](services/webhooks_elevenlabs.py) and [helpers/transcription_helpers.py](helpers/transcription_helpers.py)
-
-**Database Schema:**
-- Call model has both call_sid (unique, indexed, non-nullable) and conversation_id (nullable until API responds)
-- CallTranscription model unchanged - uses conversation_id as foreign key
-- Indexes: idx_calls_call_sid, idx_calls_call_sid_status for performance
-- Backfilled existing records with generated call_sid values
-
-**Refactor Details:**
-- Spec: agent-os/specs/2025-11-21-call-sid-webhook-refactor/spec.md
-- Implementation Notes: agent-os/specs/2025-11-21-call-sid-webhook-refactor/deployment/implementation-notes.md
-- Deployment Checklist: agent-os/specs/2025-11-21-call-sid-webhook-refactor/deployment/deployment-checklist.md
 
 ### VAPI Call Workflow
 1. Driver data retrieved from database
