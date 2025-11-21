@@ -38,6 +38,10 @@ class CallResponse(BaseModel):
     call_start_time: str
     call_end_time: Optional[str]
     duration_seconds: Optional[int]
+    transcript_summary: Optional[str]
+    call_duration_seconds: Optional[int]
+    cost: Optional[float]
+    call_successful: Optional[bool]
     created_at: str
     updated_at: str
 
@@ -51,6 +55,10 @@ class CallWithTranscriptResponse(BaseModel):
     call_start_time: str
     call_end_time: Optional[str]
     duration_seconds: Optional[int]
+    transcript_summary: Optional[str]
+    call_duration_seconds: Optional[int]
+    cost: Optional[float]
+    call_successful: Optional[bool]
     transcript: List[TranscriptMessage]
     transcript_count: int
 
@@ -113,6 +121,10 @@ async def list_calls(
                     call_start_time=call.call_start_time.isoformat(),
                     call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
                     duration_seconds=duration,
+                    transcript_summary=call.transcript_summary,
+                    call_duration_seconds=call.call_duration_seconds,
+                    cost=call.cost,
+                    call_successful=call.call_successful,
                     created_at=call.created_at.isoformat(),
                     updated_at=call.updated_at.isoformat()
                 ))
@@ -167,6 +179,10 @@ async def get_active_calls():
                     call_start_time=call.call_start_time.isoformat(),
                     call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
                     duration_seconds=duration,
+                    transcript_summary=call.transcript_summary,
+                    call_duration_seconds=call.call_duration_seconds,
+                    cost=call.cost,
+                    call_successful=call.call_successful,
                     created_at=call.created_at.isoformat(),
                     updated_at=call.updated_at.isoformat()
                 ))
@@ -220,6 +236,10 @@ async def get_call_details(call_sid: str):
             call_start_time=call.call_start_time.isoformat(),
             call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
             duration_seconds=duration,
+            transcript_summary=call.transcript_summary,
+            call_duration_seconds=call.call_duration_seconds,
+            cost=call.cost,
+            call_successful=call.call_successful,
             created_at=call.created_at.isoformat(),
             updated_at=call.updated_at.isoformat()
         )
@@ -361,6 +381,10 @@ async def get_call_with_transcript(call_sid: str):
             call_start_time=call.call_start_time.isoformat(),
             call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
             duration_seconds=duration,
+            transcript_summary=call.transcript_summary,
+            call_duration_seconds=call.call_duration_seconds,
+            cost=call.cost,
+            call_successful=call.call_successful,
             transcript=transcript_messages,
             transcript_count=len(transcript_messages)
         )
