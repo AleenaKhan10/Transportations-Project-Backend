@@ -259,10 +259,98 @@ def migration_005_change_driver_id_to_string():
     logger.info("Migration 005 completed: Changed driver_id to VARCHAR with foreign key")
 
 
+def migration_006_add_post_call_metadata():
+    """Migration 006: Add post-call webhook metadata fields."""
+    logger.info("Running Migration 006: Add post-call webhook metadata fields")
+
+    with engine.begin() as conn:
+        # Check if columns already exist
+        result = conn.execute(text("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'dev'
+            AND table_name = 'calls'
+            AND column_name IN (
+                'transcript_summary',
+                'call_duration_seconds',
+                'cost',
+                'call_successful',
+                'analysis_data',
+                'metadata_json'
+            )
+        """))
+
+        existing_columns = [row[0] for row in result]
+
+        if len(existing_columns) == 6:
+            logger.info("All post-call metadata columns already exist, skipping migration 006")
+            return
+
+        # Add transcript_summary column
+        if 'transcript_summary' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN transcript_summary TEXT NULL
+            """))
+            logger.info("  - Added transcript_summary column")
+
+        # Add call_duration_seconds column
+        if 'call_duration_seconds' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN call_duration_seconds INTEGER NULL
+            """))
+            logger.info("  - Added call_duration_seconds column")
+
+        # Add cost column
+        if 'cost' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN cost DOUBLE PRECISION NULL
+            """))
+            logger.info("  - Added cost column")
+
+        # Add call_successful column
+        if 'call_successful' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN call_successful BOOLEAN NULL
+            """))
+            logger.info("  - Added call_successful column")
+
+        # Add analysis_data column
+        if 'analysis_data' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN analysis_data TEXT NULL
+            """))
+            logger.info("  - Added analysis_data column")
+
+        # Add metadata_json column
+        if 'metadata_json' not in existing_columns:
+            conn.execute(text("""
+                ALTER TABLE dev.calls
+                ADD COLUMN metadata_json TEXT NULL
+            """))
+            logger.info("  - Added metadata_json column")
+
+        # Add column comments
+        conn.execute(text("""
+            COMMENT ON COLUMN dev.calls.transcript_summary IS 'Summary of call conversation from ElevenLabs analysis';
+            COMMENT ON COLUMN dev.calls.call_duration_seconds IS 'Duration of call in seconds from metadata';
+            COMMENT ON COLUMN dev.calls.cost IS 'Cost of call in dollars from ElevenLabs billing';
+            COMMENT ON COLUMN dev.calls.call_successful IS 'Boolean flag indicating if call was successful';
+            COMMENT ON COLUMN dev.calls.analysis_data IS 'JSON string of full analysis results';
+            COMMENT ON COLUMN dev.calls.metadata_json IS 'JSON string of full metadata from webhook'
+        """))
+
+    logger.info("Migration 006 completed: Added 6 post-call metadata fields")
+
+
 def run_all_migrations():
     """Run all migrations in sequence."""
     logger.info("=" * 70)
-    logger.info("Starting call_sid refactor migrations")
+    logger.info("Starting call_sid refactor and post-call metadata migrations")
     logger.info("=" * 70)
 
     try:
@@ -271,6 +359,7 @@ def run_all_migrations():
         migration_003_add_call_sid_constraints()
         migration_004_make_conversation_id_nullable()
         migration_005_change_driver_id_to_string()
+        migration_006_add_post_call_metadata()
 
         logger.info("=" * 70)
         logger.info("All migrations completed successfully!")

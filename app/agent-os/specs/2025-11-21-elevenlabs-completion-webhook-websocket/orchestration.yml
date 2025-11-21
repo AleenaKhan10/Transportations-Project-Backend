@@ -1,0 +1,49 @@
+task_groups:
+  - name: Database Schema Extension
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Webhook Request/Response Models
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Webhook Endpoint Implementation
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: WebSocket Connection Manager Class
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: WebSocket Message Models
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: WebSocket Endpoint Implementation
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Transcription Webhook Integration
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Post-Call Webhook Integration
+    claude_code_subagent: fastapi-expert
+    standards:
+      - backend/*
+  - name: Integration Testing
+    claude_code_subagent: qa-expert
+    standards:
+      - backend/*
+  - name: Documentation
+    claude_code_subagent: implementer
+    standards:
+      - backend/*
+  - name: Staging Deployment
+    claude_code_subagent: implementer
+    standards:
+      - backend/*
+  - name: Production Deployment
+    claude_code_subagent: implementer
+    standards:
+      - backend/*

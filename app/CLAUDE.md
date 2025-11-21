@@ -188,18 +188,85 @@ class MyModel(SQLModel, table=True):
 - Two-step lookup pattern: call_sid -> Call -> conversation_id
 - Stores dialogue turns with speaker attribution and sequencing
 - Returns 400 Bad Request if Call not found or has NULL conversation_id
+- Broadcasts transcription to subscribed WebSocket clients in real-time
 - See [services/webhooks_elevenlabs.py](services/webhooks_elevenlabs.py) and [helpers/transcription_helpers.py](helpers/transcription_helpers.py)
+
+**Post-Call Completion Webhook (November 2025):**
+- POST /webhooks/elevenlabs/post-call receives post-call analysis from ElevenLabs
+- Processes `post_call_transcription` webhook type for normal completion
+- Processes `call_initiation_failure` webhook type for failed calls
+- Updates Call status to COMPLETED (or FAILED) with call_end_time
+- Stores post-call metadata in 6 new Call model fields:
+  - `transcript_summary` (Text): AI-generated summary of conversation
+  - `call_duration_seconds` (Integer): Duration in seconds from metadata
+  - `cost` (Float): Call cost in USD from ElevenLabs billing
+  - `call_successful` (Boolean): Success indicator from AI analysis
+  - `analysis_data` (Text/JSON): Full analysis results from ElevenLabs
+  - `metadata_json` (Text/JSON): Full metadata (phone numbers, timestamps, etc.)
+- Broadcasts two sequential WebSocket messages to subscribed clients:
+  - `call_status`: Immediate notification that call ended
+  - `call_completed`: Full call data with all metadata
+- Returns 400 Bad Request for invalid payload, 404 Not Found if Call not found, 500 for database errors
+- Never returns 200 on failure to enable ElevenLabs retry mechanism (up to 10 retries)
+- See [services/webhooks_elevenlabs.py](services/webhooks_elevenlabs.py)
+
+**Real-Time WebSocket System (November 2025):**
+- **Endpoint:** `/ws/calls/transcriptions?token=JWT_TOKEN`
+- **Authentication:** JWT via query parameter (WebSocket upgrade doesn't support headers reliably)
+- **Connection Manager:** [services/websocket_manager.py](services/websocket_manager.py) - Tracks active connections, subscriptions, and broadcasts
+- **Message Models:** [models/websocket_messages.py](models/websocket_messages.py) - Pydantic models for all message types
+- **Subscription Protocol:**
+  - Client sends `{"subscribe": "identifier"}` with call_sid or conversation_id
+  - Server auto-detects identifier type and looks up Call record
+  - Server confirms with `subscription_confirmed` message containing call details
+  - Client receives real-time updates for that call
+  - Multiple clients can subscribe to same call
+  - Single client can subscribe to multiple calls simultaneously
+- **Message Types (Client -> Server):**
+  - `subscribe` - Subscribe to call updates (accepts call_sid or conversation_id)
+  - `unsubscribe` - Unsubscribe from call updates
+- **Message Types (Server -> Client):**
+  - `subscription_confirmed` - Confirmation with resolved call identifiers and status
+  - `unsubscribe_confirmed` - Unsubscribe confirmation
+  - `transcription` - Real-time dialogue turn with speaker attribution, sequence number, timestamp
+  - `call_status` - Status update when call completes (first completion message)
+  - `call_completed` - Full call data with analysis/metadata (second completion message)
+  - `error` - Error notification with optional error code (CALL_NOT_FOUND, INVALID_IDENTIFIER, etc.)
+- **Broadcasting:**
+  - Transcription webhook broadcasts `transcription` message after saving dialogue turn
+  - Post-call webhook broadcasts `call_status` then `call_completed` messages sequentially
+  - Dead connections automatically cleaned up during broadcast
+  - Broadcast failures don't affect webhook processing (graceful degradation)
+  - Completed calls automatically removed from subscription registry
+- **Connection Management:**
+  - In-memory subscription tracking (for single-instance deployment)
+  - Automatic cleanup on disconnect (removes all subscriptions)
+  - Graceful handling of network failures and timeouts
+  - Connection metadata tracking (user, connected_at, subscribed_calls)
+- **API Documentation:** agent-os/specs/2025-11-21-elevenlabs-completion-webhook-websocket/deployment/api-documentation.md
+  - Includes complete connection examples for JavaScript (browser) and Python (asyncio)
+  - Documents all 8 message types with JSON examples
+  - Provides subscription flow diagrams and error handling guidance
+
+**Integration Points:**
+- Transcription webhook -> WebSocket broadcast (after database save)
+- Post-call webhook -> WebSocket broadcast (after Call update)
+- Both webhooks succeed even if WebSocket broadcast fails
+- WebSocket failures don't prevent data persistence
+- All data stored in database regardless of real-time delivery success
 
 **Database Schema:**
 - Call model has both call_sid (unique, indexed, non-nullable) and conversation_id (nullable until API responds)
+- Post-call metadata fields all nullable for backward compatibility
 - CallTranscription model unchanged - uses conversation_id as foreign key
 - Indexes: idx_calls_call_sid, idx_calls_call_sid_status for performance
 - Backfilled existing records with generated call_sid values
 
 **Refactor Details:**
-- Spec: agent-os/specs/2025-11-21-call-sid-webhook-refactor/spec.md
+- Call_sid refactor: agent-os/specs/2025-11-21-call-sid-webhook-refactor/spec.md
+- WebSocket integration: agent-os/specs/2025-11-21-elevenlabs-completion-webhook-websocket/spec.md
 - Implementation Notes: agent-os/specs/2025-11-21-call-sid-webhook-refactor/deployment/implementation-notes.md
-- Deployment Checklist: agent-os/specs/2025-11-21-call-sid-webhook-refactor/deployment/deployment-checklist.md
+- Deployment Checklists: Available in respective spec deployment directories
 
 ### VAPI Call Workflow
 1. Driver data retrieved from database

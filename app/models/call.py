@@ -17,7 +17,7 @@ Workflow:
 from typing import Optional
 from datetime import datetime, timezone
 from sqlmodel import Field, SQLModel, Session, select, Column
-from sqlalchemy import Index, UniqueConstraint, DateTime, ForeignKey
+from sqlalchemy import Index, UniqueConstraint, DateTime, ForeignKey, Text
 from enum import Enum
 from db.database import engine
 from db.retry import db_retry
@@ -69,6 +69,38 @@ class Call(SQLModel, table=True):
     status: CallStatus = Field(default=CallStatus.IN_PROGRESS, nullable=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
+
+    # Post-call webhook metadata fields
+    transcript_summary: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Summary of the call conversation from ElevenLabs analysis"
+    )
+    call_duration_seconds: Optional[int] = Field(
+        default=None,
+        nullable=True,
+        description="Duration of the call in seconds from metadata"
+    )
+    cost: Optional[float] = Field(
+        default=None,
+        nullable=True,
+        description="Cost of the call in dollars from ElevenLabs billing"
+    )
+    call_successful: Optional[bool] = Field(
+        default=None,
+        nullable=True,
+        description="Boolean flag indicating if call was successful from analysis"
+    )
+    analysis_data: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="JSON string of full analysis results from post-call webhook"
+    )
+    metadata_json: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="JSON string of full metadata from post-call webhook"
+    )
 
     @classmethod
     def get_session(cls) -> Session:
@@ -284,6 +316,71 @@ class Call(SQLModel, table=True):
                 if call_end_time:
                     call.call_end_time = call_end_time
                 call.updated_at = datetime.now(timezone.utc)
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+
+            return call
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def update_post_call_data(
+        cls,
+        conversation_id: str,
+        call_end_time: datetime,
+        transcript_summary: Optional[str] = None,
+        call_duration_seconds: Optional[int] = None,
+        cost: Optional[float] = None,
+        call_successful: Optional[bool] = None,
+        analysis_data: Optional[str] = None,
+        metadata_json: Optional[str] = None
+    ) -> Optional["Call"]:
+        """
+        Update Call record with post-call completion metadata.
+
+        This method is called by the post-call webhook to update the Call record
+        with analysis results, metadata, and completion status from ElevenLabs.
+
+        Args:
+            conversation_id: ElevenLabs conversation identifier
+            call_end_time: Timezone-aware UTC datetime when call ended
+            transcript_summary: Optional text summary of conversation from analysis
+            call_duration_seconds: Optional duration in seconds from metadata
+            cost: Optional call cost in dollars from billing
+            call_successful: Optional boolean success flag from analysis
+            analysis_data: Optional JSON string of full analysis object
+            metadata_json: Optional JSON string of full metadata object
+
+        Returns:
+            Updated Call object if found, None otherwise
+        """
+        with cls.get_session() as session:
+            call = session.exec(
+                select(cls).where(cls.conversation_id == conversation_id)
+            ).first()
+
+            if call:
+                # Update status to COMPLETED
+                call.status = CallStatus.COMPLETED
+                call.call_end_time = call_end_time
+
+                # Update post-call metadata fields
+                if transcript_summary is not None:
+                    call.transcript_summary = transcript_summary
+                if call_duration_seconds is not None:
+                    call.call_duration_seconds = call_duration_seconds
+                if cost is not None:
+                    call.cost = cost
+                if call_successful is not None:
+                    call.call_successful = call_successful
+                if analysis_data is not None:
+                    call.analysis_data = analysis_data
+                if metadata_json is not None:
+                    call.metadata_json = metadata_json
+
+                # Update timestamp
+                call.updated_at = datetime.now(timezone.utc)
+
                 session.add(call)
                 session.commit()
                 session.refresh(call)

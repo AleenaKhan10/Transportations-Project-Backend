@@ -48,6 +48,7 @@ from services.driver_triggers import router as driver_triggers
 from services.page_access_token_service import router as page_access_token
 from services.webhooks_elevenlabs import router as webhooks_elevenlabs_router
 from services.calls import router as calls_router
+from services.websocket_calls import router as websocket_calls_router
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -176,6 +177,9 @@ app.include_router(driver_prompt_router)
 
 # ElevenLabs webhooks and call management
 app.include_router(webhooks_elevenlabs_router)
+
+# WebSocket for real-time call updates
+app.include_router(websocket_calls_router)
 app.include_router(calls_router)
 
 
