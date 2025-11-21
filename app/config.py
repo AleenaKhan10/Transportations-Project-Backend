@@ -45,9 +45,6 @@ class Settings(BaseSettings):
     VAPI_V_PHONE_NUMBER_ID: str = "dbf1e2f9-5820-4411-b2e9-b263fdad5aad"
     VAPI_V_API_KEY: str = "42cd6dd5-a268-42da-a2ba-f4f343ec023c"
 
-    # ElevenLabs settings
-    ELEVENLABS_API_KEY: str
-
     # Application settings
     PORT: int = 8000
 
@@ -60,6 +57,12 @@ class Settings(BaseSettings):
     # Weather API settings
     WEATHER_API_KEY: str = ""
     WEATHER_API_BASE_URL: str = "http://api.weatherapi.com/v1"
+
+    # ElevenLabs settings
+    ELEVENLABS_API_KEY: str = ""
+    ELEVENLABS_AGENT_ID: str = ""
+    ELEVENLABS_AGENT_PHONE_NUMBER_ID: str = ""
+    ELEVENLABS_DISPATCHER_TRANSFER_NUMBER: str = "+923282828886"  # Hardcoded dispatcher transfer number
 
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"

@@ -158,6 +158,84 @@ class ElevenLabsClient:
         # Should not reach here, but safety fallback
         raise Exception("Failed to create ElevenLabs call after all retry attempts")
 
+    async def get_conversation(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Retrieve conversation details from ElevenLabs API.
+
+        This method fetches comprehensive conversation data including:
+        - Call metadata (status, duration, timestamps)
+        - Full transcript with speaker attribution
+        - Analysis results (summary, sentiment, etc.)
+        - Recording URL
+
+        Args:
+            conversation_id: ElevenLabs conversation identifier
+
+        Returns:
+            Dictionary containing complete conversation data
+
+        Raises:
+            Exception: If API call fails or conversation not found
+        """
+        logger.info(f"Fetching conversation details for: {conversation_id}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/conversations/{conversation_id}",
+                    headers={
+                        "xi-api-key": self.api_key,
+                    },
+                    timeout=30.0
+                )
+
+                # Check for HTTP errors
+                if response.status_code == 404:
+                    error_msg = f"Conversation not found: {conversation_id}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+                elif response.status_code >= 400:
+                    error_msg = f"ElevenLabs API Error: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
+
+                # Parse successful response
+                conversation_data = response.json()
+
+                # Log successful response
+                logger.info("=" * 100)
+                logger.info("ELEVENLABS CONVERSATION DATA - SUCCESS")
+                logger.info("=" * 100)
+                logger.info(f"Conversation ID: {conversation_data.get('conversation_id', 'N/A')}")
+                logger.info(f"Status: {conversation_data.get('status', 'N/A')}")
+
+                # Log transcript info if available
+                transcript = conversation_data.get('transcript', [])
+                if transcript:
+                    logger.info(f"Transcript Messages: {len(transcript)}")
+
+                # Log metadata if available
+                metadata = conversation_data.get('metadata', {})
+                if metadata:
+                    call_duration = metadata.get('call_duration_secs', 0)
+                    logger.info(f"Call Duration: {call_duration} seconds")
+
+                logger.info("=" * 100)
+
+                return conversation_data
+
+        except httpx.TimeoutException as timeout_error:
+            logger.error(f"Timeout: Unable to reach ElevenLabs API for conversation {conversation_id}")
+            raise Exception("Network error: Unable to reach ElevenLabs API")
+
+        except httpx.HTTPError as http_error:
+            logger.error(f"HTTP error fetching conversation {conversation_id}: {str(http_error)}")
+            raise Exception(f"HTTP error: {str(http_error)}")
+
+        except Exception as error:
+            logger.error(f"Error fetching conversation {conversation_id}: {str(error)}")
+            raise error
+
 
 # Global instance
 elevenlabs_client = ElevenLabsClient()

@@ -47,6 +47,7 @@ from services.driver_data import router as drive_data
 from services.driver_triggers import router as driver_triggers
 from services.page_access_token_service import router as page_access_token
 from services.webhooks_elevenlabs import router as webhooks_elevenlabs_router
+from services.calls import router as calls_router
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -173,8 +174,9 @@ app.include_router(driver_triggers)
 app.include_router(page_access_token)
 app.include_router(driver_prompt_router)
 
-# ElevenLabs webhooks
+# ElevenLabs webhooks and call management
 app.include_router(webhooks_elevenlabs_router)
+app.include_router(calls_router)
 
 
 # main
