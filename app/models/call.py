@@ -386,3 +386,65 @@ class Call(SQLModel, table=True):
                 session.refresh(call)
 
             return call
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def update_conversation_metadata(
+        cls,
+        call_sid: str,
+        status: CallStatus,
+        call_end_time: Optional[datetime] = None,
+        transcript_summary: Optional[str] = None,
+        call_duration_seconds: Optional[int] = None,
+        cost: Optional[float] = None,
+        call_successful: Optional[bool] = None,
+        analysis_data: Optional[str] = None,
+        metadata_json: Optional[str] = None
+    ) -> Optional["Call"]:
+        """
+        Update Call record with complete conversation metadata from ElevenLabs.
+
+        This method is used after fetching conversation data from ElevenLabs API
+        to update the Call record with all available information.
+
+        Args:
+            call_sid: Generated call identifier
+            status: Call status (completed/failed)
+            call_end_time: Optional timezone-aware UTC datetime when call ended
+            transcript_summary: Summary of the conversation
+            call_duration_seconds: Duration in seconds
+            cost: Cost of the call (from ElevenLabs)
+            call_successful: Whether the call was successful
+            analysis_data: JSON string of analysis data
+            metadata_json: JSON string of full metadata
+
+        Returns:
+            Updated Call object if found, None otherwise
+        """
+        with cls.get_session() as session:
+            call = session.exec(
+                select(cls).where(cls.call_sid == call_sid)
+            ).first()
+
+            if call:
+                call.status = status
+                if call_end_time:
+                    call.call_end_time = call_end_time
+                if transcript_summary:
+                    call.transcript_summary = transcript_summary
+                if call_duration_seconds is not None:
+                    call.call_duration_seconds = call_duration_seconds
+                if cost is not None:
+                    call.cost = cost
+                if call_successful is not None:
+                    call.call_successful = call_successful
+                if analysis_data:
+                    call.analysis_data = analysis_data
+                if metadata_json:
+                    call.metadata_json = metadata_json
+                call.updated_at = datetime.now(timezone.utc)
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+
+            return call
