@@ -13,6 +13,8 @@ Reference: agent-os/specs/2025-11-21-elevenlabs-completion-webhook-websocket/spe
 
 import logging
 import json
+import asyncio
+from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
@@ -28,6 +30,53 @@ from services.websocket_manager import websocket_manager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws/calls", tags=["websockets"])
+
+# Polling configuration
+POLL_INTERVAL_SECONDS = 5  # Poll every 5 seconds for new transcriptions
+
+
+async def poll_for_updates(connection_id: str):
+    """
+    Background task that periodically polls the database for new transcriptions.
+
+    This is a fallback mechanism to ensure clients receive all transcriptions even if
+    webhook broadcasts fail (e.g., when testing locally while webhooks hit production).
+
+    The polling happens every POLL_INTERVAL_SECONDS and checks for transcriptions
+    that haven't been sent to the client yet.
+
+    Args:
+        connection_id: UUID of the WebSocket connection to poll for
+
+    Note:
+        This task runs continuously until the connection is closed or cancelled.
+        It gracefully handles errors and connection issues.
+    """
+    logger.info(f"Starting polling task for connection: {connection_id}")
+
+    try:
+        while True:
+            # Wait for next poll interval
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+            # Poll for new transcriptions
+            try:
+                await websocket_manager.poll_new_transcriptions(connection_id)
+            except Exception as e:
+                logger.error(
+                    f"Polling error - connection: {connection_id}, error: {str(e)}",
+                    exc_info=True
+                )
+                # Continue polling even if one iteration fails
+
+    except asyncio.CancelledError:
+        logger.info(f"Polling task cancelled for connection: {connection_id}")
+        raise
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in polling task - connection: {connection_id}, error: {str(e)}",
+            exc_info=True
+        )
 
 
 async def validate_jwt_token(token: str) -> dict:
@@ -145,6 +194,9 @@ async def websocket_endpoint(
         connection_id = await websocket_manager.connect(websocket, user)
         logger.info(f"WebSocket connection established - connection_id: {connection_id}")
 
+        # Start background polling task (fallback mechanism)
+        polling_task = asyncio.create_task(poll_for_updates(connection_id))
+
         # Message receive loop
         while True:
             try:
@@ -173,6 +225,82 @@ async def websocket_endpoint(
                         logger.info(
                             f"Subscription confirmed - identifier: {identifier}, "
                             f"call_sid: {call.call_sid}, connection: {connection_id}"
+                        )
+
+                        # Send all existing transcriptions for this call
+                        from models.call_transcription import CallTranscription
+                        from models.websocket_messages import TranscriptionMessage
+
+                        logger.info(
+                            f"Fetching existing transcriptions - call_sid: {call.call_sid}, "
+                            f"conversation_id: {call.conversation_id}"
+                        )
+
+                        # Get all transcriptions ordered by sequence number
+                        if call.conversation_id:
+                            transcriptions = CallTranscription.get_by_conversation_id(call.conversation_id)
+                        else:
+                            # If no conversation_id yet, try call_sid (will return empty list if not found)
+                            transcriptions = CallTranscription.get_by_call_sid(call.call_sid)
+
+                        logger.info(
+                            f"Found {len(transcriptions)} existing transcriptions to send - "
+                            f"connection: {connection_id}"
+                        )
+
+                        # Send each transcription as a separate message
+                        sent_count = 0
+                        last_seq = 0
+                        for transcription in transcriptions:
+                            try:
+                                # Map speaker type from database format to WebSocket format
+                                speaker_type = "agent" if transcription.speaker_type.value == "agent" else "driver"
+
+                                transcription_msg = TranscriptionMessage(
+                                    type="transcription",
+                                    conversation_id=call.conversation_id or "",
+                                    call_sid=call.call_sid,
+                                    transcription_id=transcription.id,
+                                    sequence_number=transcription.sequence_number,
+                                    speaker_type=speaker_type,
+                                    message_text=transcription.message_text,
+                                    timestamp=transcription.timestamp
+                                )
+
+                                # Convert to dict for JSON serialization
+                                msg_dict = transcription_msg.model_dump()
+
+                                # Convert datetime to ISO string
+                                if "timestamp" in msg_dict and isinstance(msg_dict["timestamp"], datetime):
+                                    msg_dict["timestamp"] = msg_dict["timestamp"].isoformat()
+
+                                await websocket.send_json(msg_dict)
+                                sent_count += 1
+                                last_seq = transcription.sequence_number
+
+                                logger.debug(
+                                    f"Sent transcription {sent_count}/{len(transcriptions)} - "
+                                    f"sequence: {transcription.sequence_number}, connection: {connection_id}"
+                                )
+
+                            except Exception as e:
+                                logger.error(
+                                    f"Error sending transcription {transcription.id} - "
+                                    f"error: {str(e)}, connection: {connection_id}",
+                                    exc_info=True
+                                )
+                                # Continue sending other transcriptions even if one fails
+
+                        # Update last sequence tracker after sending initial transcriptions
+                        if sent_count > 0 and last_seq > 0:
+                            if connection_id not in websocket_manager.last_sequence_sent:
+                                websocket_manager.last_sequence_sent[connection_id] = {}
+                            websocket_manager.last_sequence_sent[connection_id][call.call_sid] = last_seq
+
+                        logger.info(
+                            f"Sent {sent_count}/{len(transcriptions)} existing transcriptions - "
+                            f"identifier: {identifier}, connection: {connection_id}, "
+                            f"last_sequence: {last_seq}"
                         )
 
                     except ValueError as e:
@@ -235,6 +363,14 @@ async def websocket_endpoint(
         logger.error(f"Unexpected error in WebSocket handler - connection: {connection_id}, error: {str(e)}", exc_info=True)
 
     finally:
+        # Cancel polling task
+        if 'polling_task' in locals() and not polling_task.done():
+            polling_task.cancel()
+            try:
+                await polling_task
+            except asyncio.CancelledError:
+                logger.debug(f"Polling task cancelled - connection: {connection_id}")
+
         # Always cleanup connection
         if connection_id:
             await websocket_manager.disconnect(connection_id)

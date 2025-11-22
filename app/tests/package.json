@@ -1,0 +1,28 @@
+{
+  "name": "websocket-transcription-test",
+  "version": "1.0.0",
+  "description": "Node.js test script for ElevenLabs WebSocket real-time transcription",
+  "main": "websocket_test.js",
+  "scripts": {
+    "test": "node websocket_test.js",
+    "test:dev": "node websocket_test.js",
+    "test:simple": "node websocket_simple_test.js",
+    "test:ws": "node websocket_simple_test.js"
+  },
+  "keywords": [
+    "websocket",
+    "elevenlabs",
+    "transcription",
+    "real-time",
+    "test"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.14.2",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  }
+}

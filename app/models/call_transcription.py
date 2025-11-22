@@ -159,3 +159,36 @@ class CallTranscription(SQLModel, table=True):
                 .limit(limit)
             )
             return session.exec(stmt).all()
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def get_by_call_sid(
+        cls,
+        call_sid: str,
+        limit: Optional[int] = None
+    ) -> List["CallTranscription"]:
+        """
+        Get all transcriptions for a call by call_sid, ordered by sequence_number.
+
+        This method looks up the Call by call_sid to get conversation_id,
+        then retrieves all transcriptions for that conversation.
+
+        Args:
+            call_sid: Our generated call identifier (format: EL_{driverId}_{timestamp})
+            limit: Optional limit on number of results
+
+        Returns:
+            List of CallTranscription objects ordered by sequence_number.
+            Returns empty list if Call not found or Call has no conversation_id yet.
+        """
+        # Import Call model here to avoid circular import
+        from models.call import Call
+
+        # Look up Call by call_sid
+        call = Call.get_by_call_sid(call_sid)
+        if not call or not call.conversation_id:
+            # No Call found or conversation_id not set yet (call hasn't started)
+            return []
+
+        # Get transcriptions by conversation_id
+        return cls.get_by_conversation_id(call.conversation_id, limit=limit)
