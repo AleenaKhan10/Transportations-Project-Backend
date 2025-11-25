@@ -201,29 +201,66 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
         from datetime import datetime, timezone, timedelta
         from helpers import logger
 
-        logger.info(f"Fetching conversation data for: {conversation_id}")
+        # Step 0: Validate conversation_id format
+        if not conversation_id or not conversation_id.startswith('conv_'):
+            logger.warning(f"[VALIDATION] Invalid conversation_id format: {conversation_id}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid conversation_id format. Expected format: conv_xxx, got: {conversation_id}"
+            )
 
-        # Step 1: Fetch conversation data from ElevenLabs
+        # Additional validation: filter out test IDs
+        if 'test' in conversation_id.lower() or 'dummy' in conversation_id.lower():
+            logger.warning(f"[VALIDATION] Test/dummy conversation_id detected: {conversation_id}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Test/dummy conversation IDs are not allowed: {conversation_id}"
+            )
+
+        logger.info(f"[FETCH] Starting fetch for conversation: {conversation_id}")
+
+        # Step 1: Find Call record first to avoid unnecessary API calls
+        call = Call.get_by_conversation_id(conversation_id)
+        if not call:
+            logger.warning(f"[DB] No Call record found for conversation {conversation_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Call record not found for conversation {conversation_id}. This conversation may not belong to this system."
+            )
+
+        logger.info(f"[DB] Found Call record - call_sid: {call.call_sid}, driver_id: {call.driver_id}, current_status: {call.status.value}")
+
+        # Step 2: Fetch conversation data from ElevenLabs
+        logger.info(f"[API] Calling ElevenLabs API for conversation: {conversation_id}")
         conversation_data = await elevenlabs_client.get_conversation(conversation_id)
 
         if not conversation_data:
+            logger.warning(f"[API] ElevenLabs returned empty data for conversation: {conversation_id}")
             raise HTTPException(
                 status_code=404,
                 detail=f"Conversation {conversation_id} not found in ElevenLabs"
             )
 
-        # Step 2: Find Call record by conversation_id
-        call = Call.get_by_conversation_id(conversation_id)
-        if not call:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Call record not found for conversation {conversation_id}"
-            )
+        logger.info(f"[API] Successfully fetched conversation data - status: {conversation_data.get('status', 'unknown')}")
 
         # Step 3: Extract and update Call metadata
+        import json
+
         metadata = conversation_data.get('metadata', {})
+        analysis = conversation_data.get('analysis', {})
+
+        # Extract all fields
         call_duration = metadata.get('call_duration_secs', 0)
-        call_successful = metadata.get('analysis', {}).get('call_successful', False)
+        cost_value = metadata.get('cost', 0) / 100000.0 if metadata.get('cost') else None  # Convert from micro-units
+
+        # Call successful can be boolean or string "success"/"failure"
+        call_successful_raw = analysis.get('call_successful')
+        if isinstance(call_successful_raw, str):
+            call_successful = call_successful_raw.lower() == 'success'
+        else:
+            call_successful = bool(call_successful_raw)
+
+        transcript_summary = analysis.get('transcript_summary', '')
 
         # Extract timestamps
         start_time_unix = metadata.get('start_time_unix_secs')
@@ -234,15 +271,29 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             call_start_time = call.call_start_time
             call_end_time = None
 
-        # Update Call status
-        new_status = CallStatus.COMPLETED if call_successful else CallStatus.FAILED
-        Call.update_status_by_call_sid(
+        # Determine status
+        conversation_status = conversation_data.get('status', 'unknown')
+        if conversation_status == 'done':
+            new_status = CallStatus.COMPLETED if call_successful else CallStatus.FAILED
+        else:
+            new_status = CallStatus.IN_PROGRESS
+
+        logger.info(f"[METADATA] Extracted data - conversation_status: {conversation_status}, new_status: {new_status.value}, duration: {call_duration}s, cost: ${cost_value}, successful: {call_successful}, has_summary: {bool(transcript_summary)}")
+
+        # Update Call with ALL metadata
+        Call.update_conversation_metadata(
             call_sid=call.call_sid,
             status=new_status,
-            call_end_time=call_end_time
+            call_end_time=call_end_time,
+            transcript_summary=transcript_summary,
+            call_duration_seconds=call_duration,
+            cost=cost_value,
+            call_successful=call_successful,
+            analysis_data=json.dumps(analysis),
+            metadata_json=json.dumps(metadata)
         )
 
-        logger.info(f"Updated Call status to {new_status}")
+        logger.info(f"[DB] Successfully updated Call {call.call_sid} with full metadata - status: {new_status.value}, summary: {len(transcript_summary) if transcript_summary else 0} chars")
 
         # Step 4: Store transcript
         transcript = conversation_data.get('transcript', [])
@@ -283,9 +334,13 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             "call_sid": call.call_sid,
             "call_updated": True,
             "call_status": new_status.value,
+            "call_successful": call_successful,
             "call_duration": call_duration,
+            "transcript_summary": transcript_summary,
+            "cost": cost_value,
             "transcriptions_added": transcriptions_added,
             "transcriptions_total": existing_count + transcriptions_added,
+            "should_stop_polling": conversation_status == 'done',  # Frontend can use this to stop polling
             "conversation_data": conversation_data
         }
 
@@ -293,8 +348,19 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
         raise
     except Exception as err:
         from helpers import logger
-        logger.error(f"Error fetching conversation {conversation_id}: {str(err)}", exc_info=True)
+        error_message = str(err)
+
+        # Check if it's a "not found" error from ElevenLabs
+        if "not found" in error_message.lower() or "404" in error_message:
+            logger.warning(f"Conversation {conversation_id} not found in ElevenLabs")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation not found in ElevenLabs: {conversation_id}"
+            )
+
+        # Other errors remain 500
+        logger.error(f"Error fetching conversation {conversation_id}: {err}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch conversation data: {str(err)}"
+            detail=f"Failed to fetch conversation data: {error_message}"
         )

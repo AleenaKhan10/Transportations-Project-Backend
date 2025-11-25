@@ -48,6 +48,9 @@ class WebSocketConnectionManager:
         self.connections: Dict[str, WebSocket] = {}
         self.subscriptions: Dict[str, Set[str]] = {}
         self.connection_metadata: Dict[str, dict] = {}
+        # Track last sequence number sent for each connection+call combination
+        # Format: {connection_id: {call_sid: last_sequence_number}}
+        self.last_sequence_sent: Dict[str, Dict[str, int]] = {}
         logger.info("WebSocketConnectionManager initialized")
 
     async def connect(self, websocket: WebSocket, user: dict) -> str:
@@ -96,6 +99,7 @@ class WebSocketConnectionManager:
         - Removes connection from connections dict
         - Removes all subscriptions for this connection
         - Removes metadata for this connection
+        - Removes last sequence tracking
 
         Args:
             connection_id: UUID of the connection to disconnect
@@ -125,6 +129,10 @@ class WebSocketConnectionManager:
                 f"WebSocket connection disconnected: {connection_id} "
                 f"(user: {username}, remaining_connections: {len(self.connections)})"
             )
+
+        # Remove last sequence tracking
+        if connection_id in self.last_sequence_sent:
+            del self.last_sequence_sent[connection_id]
 
     async def subscribe(self, connection_id: str, identifier: str) -> Call:
         """
@@ -191,6 +199,11 @@ class WebSocketConnectionManager:
         # Update connection metadata
         if connection_id in self.connection_metadata:
             self.connection_metadata[connection_id]["subscribed_calls"].add(identifier)
+
+        # Initialize last sequence tracking for this connection+call
+        if connection_id not in self.last_sequence_sent:
+            self.last_sequence_sent[connection_id] = {}
+        self.last_sequence_sent[connection_id][call.call_sid] = 0
 
         logger.info(
             f"Subscription added: {identifier} -> {connection_id} "
@@ -414,6 +427,21 @@ class WebSocketConnectionManager:
         # Broadcast to all subscribed clients
         await self.broadcast_to_call(call, message_dict)
 
+        # Update last sequence sent for all subscribers
+        connection_ids = set()
+        if call.call_sid and call.call_sid in self.subscriptions:
+            connection_ids.update(self.subscriptions[call.call_sid])
+        if call.conversation_id and call.conversation_id in self.subscriptions:
+            connection_ids.update(self.subscriptions[call.conversation_id])
+
+        for conn_id in connection_ids:
+            if conn_id in self.last_sequence_sent:
+                if call.call_sid not in self.last_sequence_sent[conn_id]:
+                    self.last_sequence_sent[conn_id][call.call_sid] = 0
+                # Update to the latest sequence number
+                if sequence_number > self.last_sequence_sent[conn_id][call.call_sid]:
+                    self.last_sequence_sent[conn_id][call.call_sid] = sequence_number
+
         logger.info(
             f"Transcription broadcast completed: call_sid={call_sid}, "
             f"transcription_id={transcription_id}, sequence={sequence_number}"
@@ -546,6 +574,139 @@ class WebSocketConnectionManager:
             f"Call completion broadcast completed: conversation_id={conversation_id}, "
             f"call_sid={call.call_sid}, messages_sent=2"
         )
+
+    async def poll_new_transcriptions(self, connection_id: str):
+        """
+        Poll database for new transcriptions and send them to the connection.
+
+        This method is a fallback mechanism to ensure clients receive all transcriptions
+        even if webhook broadcasts fail or are missed. It checks the database for
+        transcriptions newer than the last one sent to this connection.
+
+        Process:
+        1. Get all calls this connection is subscribed to
+        2. For each call, fetch transcriptions with sequence_number > last_sent
+        3. Send any new transcriptions found
+        4. Update last_sequence_sent tracker
+
+        Args:
+            connection_id: UUID of the connection to poll for
+
+        Note:
+            - This is designed to be called periodically (e.g., every 5-10 seconds)
+            - Only sends transcriptions that haven't been sent yet
+            - Gracefully handles connection errors
+        """
+        if connection_id not in self.connections:
+            logger.debug(f"Poll skipped - connection not found: {connection_id}")
+            return
+
+        if connection_id not in self.connection_metadata:
+            logger.debug(f"Poll skipped - no metadata: {connection_id}")
+            return
+
+        websocket = self.connections[connection_id]
+        subscribed_calls = self.connection_metadata[connection_id].get("subscribed_calls", set())
+
+        if not subscribed_calls:
+            logger.debug(f"Poll skipped - no subscriptions: {connection_id}")
+            return
+
+        from models.call_transcription import CallTranscription
+        from models.websocket_messages import TranscriptionMessage
+
+        total_new_transcriptions = 0
+
+        # Poll each subscribed call
+        for identifier in list(subscribed_calls):
+            try:
+                # Resolve identifier to Call
+                call = None
+                if identifier.startswith("EL_"):
+                    call = Call.get_by_call_sid(identifier)
+                else:
+                    call = Call.get_by_conversation_id(identifier)
+
+                if not call or not call.conversation_id:
+                    continue
+
+                # Get last sequence sent for this call
+                last_sequence = self.last_sequence_sent.get(connection_id, {}).get(call.call_sid, 0)
+
+                # Fetch transcriptions newer than last_sequence
+                all_transcriptions = CallTranscription.get_by_conversation_id(call.conversation_id)
+                new_transcriptions = [
+                    t for t in all_transcriptions
+                    if t.sequence_number > last_sequence
+                ]
+
+                if not new_transcriptions:
+                    continue
+
+                logger.debug(
+                    f"Poll found {len(new_transcriptions)} new transcriptions - "
+                    f"call_sid: {call.call_sid}, connection: {connection_id}, "
+                    f"last_sequence: {last_sequence}"
+                )
+
+                # Send new transcriptions
+                for transcription in new_transcriptions:
+                    speaker_type = "agent" if transcription.speaker_type.value == "agent" else "driver"
+
+                    transcription_msg = TranscriptionMessage(
+                        type="transcription",
+                        conversation_id=call.conversation_id or "",
+                        call_sid=call.call_sid,
+                        transcription_id=transcription.id,
+                        sequence_number=transcription.sequence_number,
+                        speaker_type=speaker_type,
+                        message_text=transcription.message_text,
+                        timestamp=transcription.timestamp
+                    )
+
+                    # Convert to dict for JSON serialization
+                    msg_dict = transcription_msg.dict()
+
+                    # Convert datetime to ISO string
+                    if "timestamp" in msg_dict and isinstance(msg_dict["timestamp"], datetime):
+                        msg_dict["timestamp"] = msg_dict["timestamp"].isoformat()
+
+                    try:
+                        await websocket.send_json(msg_dict)
+                        total_new_transcriptions += 1
+
+                        # Update last sequence sent
+                        if connection_id not in self.last_sequence_sent:
+                            self.last_sequence_sent[connection_id] = {}
+                        self.last_sequence_sent[connection_id][call.call_sid] = transcription.sequence_number
+
+                        logger.debug(
+                            f"Poll sent transcription - "
+                            f"sequence: {transcription.sequence_number}, "
+                            f"connection: {connection_id}"
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Poll failed to send transcription - "
+                            f"error: {str(e)}, connection: {connection_id}"
+                        )
+                        # Don't continue if we can't send
+                        raise
+
+            except Exception as e:
+                logger.error(
+                    f"Poll error for identifier {identifier} - "
+                    f"error: {str(e)}, connection: {connection_id}",
+                    exc_info=True
+                )
+                continue
+
+        if total_new_transcriptions > 0:
+            logger.info(
+                f"Poll completed - sent {total_new_transcriptions} new transcriptions "
+                f"to connection: {connection_id}"
+            )
 
 
 # Global singleton instance

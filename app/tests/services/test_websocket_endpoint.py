@@ -20,6 +20,8 @@ from fastapi import status as http_status
 
 from main import app
 from models.call import Call, CallStatus
+from models.call_transcription import CallTranscription, SpeakerType
+from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -48,6 +50,28 @@ def valid_token():
 def invalid_token():
     """Return an invalid JWT token for testing."""
     return "invalid_token"
+
+
+@pytest.fixture
+def mock_transcriptions():
+    """Create a list of mock CallTranscription objects."""
+    transcription1 = MagicMock(spec=CallTranscription)
+    transcription1.id = 1
+    transcription1.conversation_id = "abc123xyz"
+    transcription1.speaker_type = SpeakerType.AGENT
+    transcription1.message_text = "Hello, this is a test message from the agent."
+    transcription1.timestamp = datetime(2025, 11, 21, 15, 30, 0, tzinfo=timezone.utc)
+    transcription1.sequence_number = 1
+
+    transcription2 = MagicMock(spec=CallTranscription)
+    transcription2.id = 2
+    transcription2.conversation_id = "abc123xyz"
+    transcription2.speaker_type = SpeakerType.DRIVER
+    transcription2.message_text = "Hi, this is the driver responding."
+    transcription2.timestamp = datetime(2025, 11, 21, 15, 30, 5, tzinfo=timezone.utc)
+    transcription2.sequence_number = 2
+
+    return [transcription1, transcription2]
 
 
 class TestWebSocketEndpoint:
@@ -232,3 +256,69 @@ class TestWebSocketEndpoint:
             assert response["code"] == "INVALID_MESSAGE_FORMAT"
             assert "Invalid message format" in response["message"]
             assert "subscribe" in response["message"] or "unsubscribe" in response["message"]
+
+
+    @patch("services.websocket_calls.validate_jwt_token")
+    @patch("services.websocket_manager.Call.get_by_call_sid")
+    @patch("models.call_transcription.CallTranscription.get_by_conversation_id")
+    def test_websocket_sends_existing_transcriptions_on_subscribe(
+        self, mock_get_transcriptions, mock_get_by_call_sid, mock_validate_jwt,
+        mock_call, mock_transcriptions, valid_token
+    ):
+        """
+        Test 6: WebSocket sends all existing transcriptions when client subscribes.
+
+        Verifies that:
+        - Client subscribes to a call
+        - Subscription confirmation is sent
+        - All existing transcriptions are sent in sequence order
+        - Each transcription message has correct format
+        """
+        # Mock JWT validation
+        mock_validate_jwt.return_value = {
+            "user_id": "user123",
+            "username": "test@example.com"
+        }
+
+        # Mock Call lookup
+        mock_get_by_call_sid.return_value = mock_call
+
+        # Mock transcription lookup to return existing transcriptions
+        mock_get_transcriptions.return_value = mock_transcriptions
+
+        client = TestClient(app)
+
+        with client.websocket_connect(f"/ws/calls/transcriptions?token={valid_token}") as websocket:
+            # Send subscribe message
+            websocket.send_json({"subscribe": "EL_driver123_1732199700"})
+
+            # Receive subscription confirmation
+            response = websocket.receive_json()
+            assert response["type"] == "subscription_confirmed"
+            assert response["call_sid"] == "EL_driver123_1732199700"
+
+            # Receive all existing transcriptions
+            transcription_messages = []
+            for _ in range(len(mock_transcriptions)):
+                msg = websocket.receive_json()
+                transcription_messages.append(msg)
+
+            # Verify all transcriptions were sent
+            assert len(transcription_messages) == 2
+
+            # Verify first transcription
+            assert transcription_messages[0]["type"] == "transcription"
+            assert transcription_messages[0]["sequence_number"] == 1
+            assert transcription_messages[0]["speaker_type"] == "agent"
+            assert transcription_messages[0]["message_text"] == "Hello, this is a test message from the agent."
+            assert transcription_messages[0]["call_sid"] == "EL_driver123_1732199700"
+
+            # Verify second transcription
+            assert transcription_messages[1]["type"] == "transcription"
+            assert transcription_messages[1]["sequence_number"] == 2
+            assert transcription_messages[1]["speaker_type"] == "driver"
+            assert transcription_messages[1]["message_text"] == "Hi, this is the driver responding."
+            assert transcription_messages[1]["call_sid"] == "EL_driver123_1732199700"
+
+            # Verify transcriptions were fetched
+            mock_get_transcriptions.assert_called_once_with("abc123xyz")

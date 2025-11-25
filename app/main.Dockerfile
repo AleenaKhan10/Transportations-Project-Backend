@@ -24,4 +24,5 @@ RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /
 USER appuser
 
 # Use PORT environment variable for Cloud Run compatibility
-CMD exec gunicorn --bind 0.0.0.0:$PORT -k uvicorn.workers.UvicornWorker main:app
+# Using Uvicorn directly for full WebSocket support (required for /ws/calls/transcriptions)
+CMD exec uvicorn main:app --host 0.0.0.0 --port $PORT --ws websockets
