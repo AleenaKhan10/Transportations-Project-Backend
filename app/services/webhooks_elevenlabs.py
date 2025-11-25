@@ -34,6 +34,7 @@ from sqlalchemy.exc import OperationalError, DisconnectionError
 
 from helpers.transcription_helpers import save_transcription
 from logic.auth.service import make_timezone_aware
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ async def validate_elevenlabs_signature(request: Request):
         logger.warning("Missing ElevenLabs-Signature header")
         raise HTTPException(status_code=401, detail="Missing signature header")
 
-    secret = os.getenv("ELEVENLABS_WEBHOOK_SECRET")
+    secret = settings.ELEVENLABS_WEBHOOK_SECRET
     if not secret:
         logger.error("ELEVENLABS_WEBHOOK_SECRET not configured")
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
