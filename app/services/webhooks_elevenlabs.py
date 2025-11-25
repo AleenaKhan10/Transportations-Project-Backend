@@ -347,6 +347,22 @@ class FailureMetadata(BaseModel):
     body: Dict[str, Any]
 
 
+class PostCallAnalysis(BaseModel):
+    """
+    Analysis results for a completed call from ElevenLabs.
+
+    Fields:
+        call_successful: Boolean indicating if call was successful
+        transcript_summary: Text summary of the conversation
+        evaluation_criteria_results: Optional dictionary of evaluation criteria results
+        data_collection_results: Optional dictionary of data collection results
+    """
+    call_successful: Optional[bool] = None
+    transcript_summary: Optional[str] = None
+    evaluation_criteria_results: Optional[Dict[str, Any]] = None
+    data_collection_results: Optional[Dict[str, Any]] = None
+
+
 class PostCallData(BaseModel):
     """
     Data payload for post-call webhook from ElevenLabs.
