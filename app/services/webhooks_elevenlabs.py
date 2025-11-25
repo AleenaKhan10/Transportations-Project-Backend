@@ -19,13 +19,17 @@ Error Handling Strategy:
 - Never return 200 OK on failure (allows ElevenLabs to retry)
 """
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Request, status, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, validator
-from typing import Optional
+from typing import Optional, Union, Dict, Any, List
 from datetime import datetime
 import logging
 import json
+import hmac
+import hashlib
+import os
+import time
 from sqlalchemy.exc import OperationalError, DisconnectionError
 
 from helpers.transcription_helpers import save_transcription
@@ -34,7 +38,60 @@ from logic.auth.service import make_timezone_aware
 logger = logging.getLogger(__name__)
 
 # Router with no authentication (public endpoint for performance)
+# NOTE: We now use HMAC signature validation for security
 router = APIRouter(prefix="/webhooks/elevenlabs", tags=["webhooks"])
+
+
+async def validate_elevenlabs_signature(request: Request):
+    """
+    Validate the ElevenLabs HMAC signature header.
+    """
+    signature_header = request.headers.get("elevenlabs-signature")
+    if not signature_header:
+        logger.warning("Missing ElevenLabs-Signature header")
+        raise HTTPException(status_code=401, detail="Missing signature header")
+
+    secret = os.getenv("ELEVENLABS_WEBHOOK_SECRET")
+    if not secret:
+        logger.error("ELEVENLABS_WEBHOOK_SECRET not configured")
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+
+    try:
+        parts = signature_header.split(",")
+        timestamp_part = next((p for p in parts if p.startswith("t=")), None)
+        signature_part = next((p for p in parts if p.startswith("v0=")), None)
+
+        if not timestamp_part or not signature_part:
+             raise ValueError("Invalid header format")
+
+        timestamp = timestamp_part[2:]
+        signature = signature_part[3:]
+
+        # Validate timestamp (prevent replay attacks > 30 mins)
+        request_time = int(timestamp)
+        current_time = int(time.time())
+        if current_time - request_time > 1800: # 30 minutes
+             raise ValueError("Request expired")
+
+        # Validate signature
+        body = await request.body()
+        payload = f"{timestamp}.{body.decode('utf-8')}"
+        
+        mac = hmac.new(
+            key=secret.encode("utf-8"),
+            msg=payload.encode("utf-8"),
+            digestmod=hashlib.sha256
+        )
+        expected_signature = mac.hexdigest()
+
+        if not hmac.compare_digest(signature, expected_signature):
+             raise ValueError("Invalid signature")
+
+    except Exception as e:
+        logger.warning(f"Signature validation failed: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    return True
 
 
 class TranscriptionWebhookRequest(BaseModel):
@@ -261,62 +318,57 @@ class TranscriptTurn(BaseModel):
     time_in_call_secs: float
 
 
-class PostCallMetadata(BaseModel):
-    """
-    Metadata for a completed call from ElevenLabs.
-
-    Fields:
-        agent_id: ElevenLabs agent identifier
-        call_id: External call identifier (e.g., Twilio call SID)
-        start_time_unix_secs: Unix timestamp when call started
-        call_duration_secs: Duration of the call in seconds
-        cost: Cost of the call in dollars
-        from_number: Phone number call was made from
-        to_number: Phone number call was made to
-    """
-    agent_id: str
-    call_id: Optional[str] = None
-    start_time_unix_secs: Optional[int] = None
+class TranscriptionMetadata(BaseModel):
+    """Metadata for successful transcription webhooks."""
+    start_time_unix_secs: int
     call_duration_secs: int
     cost: float
-    from_number: str
-    to_number: str
+    deletion_settings: Optional[Dict[str, Any]] = None
+    feedback: Optional[Dict[str, Any]] = None
+    authorization_method: Optional[str] = None
+    charging: Optional[Dict[str, Any]] = None
+    termination_reason: Optional[str] = None
 
 
-class PostCallAnalysis(BaseModel):
-    """
-    Analysis results for a completed call from ElevenLabs.
+class FailureMetadataBody(BaseModel):
+    """Body of failure metadata (Twilio or SIP details)."""
+    # Common fields or flexible dict
+    sip_status_code: Optional[int] = None
+    error_reason: Optional[str] = None
+    call_sid: Optional[str] = None
+    CallSid: Optional[str] = None
+    CallStatus: Optional[str] = None
 
-    Fields:
-        call_successful: Boolean indicating if call was successful
-        transcript_summary: Text summary of the conversation
-        evaluation_results: Optional dictionary of evaluation criteria results
-    """
-    call_successful: bool
-    transcript_summary: str
-    evaluation_results: Optional[dict] = None
+
+class FailureMetadata(BaseModel):
+    """Metadata for call initiation failure."""
+    type: str  # "twilio" or "sip"
+    body: Dict[str, Any]
 
 
 class PostCallData(BaseModel):
     """
     Data payload for post-call webhook from ElevenLabs.
-
-    Fields:
-        agent_id: ElevenLabs agent identifier
-        conversation_id: ElevenLabs conversation identifier (required)
-        status: Call status - 'done' or 'failed'
-        transcript: List of dialogue turns (only for successful calls)
-        metadata: Call metadata (nullable for failures)
-        analysis: Call analysis results (nullable for failures)
-        error_message: Error message (only for failures)
     """
     agent_id: str
     conversation_id: str = Field(..., min_length=1, description="ElevenLabs conversation identifier")
-    status: str
+    status: Optional[str] = None # "done" for success, may be missing for failure? Doc says status is in data for transcription.
+    
+    # Transcription specific
     transcript: Optional[list[TranscriptTurn]] = None
-    metadata: Optional[PostCallMetadata] = None
     analysis: Optional[PostCallAnalysis] = None
-    error_message: Optional[str] = None
+    conversation_initiation_client_data: Optional[Dict[str, Any]] = None
+    
+    # Failure specific
+    failure_reason: Optional[str] = None
+    
+    # Polymorphic metadata
+    metadata: Optional[Union[TranscriptionMetadata, FailureMetadata]] = None
+    
+    # Future compatibility
+    has_audio: Optional[bool] = None
+    has_user_audio: Optional[bool] = None
+    has_response_audio: Optional[bool] = None
 
     @validator('conversation_id')
     def validate_conversation_id(cls, v):
@@ -340,14 +392,14 @@ class PostCallWebhookRequest(BaseModel):
         - Timestamp is Unix epoch seconds
         - Data structure varies based on webhook type
     """
-    type: str = Field(..., description="Webhook type - 'post_call_transcription' or 'call_initiation_failure'")
+    type: str = Field(..., description="Webhook type")
     event_timestamp: int = Field(..., description="Unix timestamp when event occurred")
     data: PostCallData
 
     @validator('type')
     def validate_type(cls, v):
         """Validate that webhook type is supported."""
-        valid_types = ['post_call_transcription', 'call_initiation_failure']
+        valid_types = ['post_call_transcription', 'call_initiation_failure', 'post_call_audio']
         if v not in valid_types:
             raise ValueError(f"type must be one of {valid_types}, got '{v}'")
         return v
@@ -413,7 +465,10 @@ class PostCallErrorResponse(BaseModel):
         }
     }
 )
-async def receive_post_call(request: PostCallWebhookRequest):
+async def receive_post_call(
+    request: PostCallWebhookRequest,
+    _auth: bool = Depends(validate_elevenlabs_signature)
+):
     """
     Receive and process post-call completion webhook from ElevenLabs.
 
@@ -516,7 +571,7 @@ async def receive_post_call(request: PostCallWebhookRequest):
                     }
                 )
 
-            logger.info(f"Call status updated to FAILED - Error: {request.data.error_message}")
+            logger.info(f"Call status updated to FAILED - Reason: {request.data.failure_reason}")
             logger.info("=" * 100)
 
             return PostCallSuccessResponse(
@@ -540,7 +595,7 @@ async def receive_post_call(request: PostCallWebhookRequest):
             # Extract metadata fields (with None checks)
             call_duration_seconds = None
             cost = None
-            if request.data.metadata:
+            if request.data.metadata and isinstance(request.data.metadata, TranscriptionMetadata):
                 call_duration_seconds = request.data.metadata.call_duration_secs
                 cost = request.data.metadata.cost
                 logger.info(f"Metadata - Duration: {call_duration_seconds}s, Cost: ${cost}")
@@ -618,6 +673,17 @@ async def receive_post_call(request: PostCallWebhookRequest):
                 call_status="completed"
             )
 
+        elif request.type == "post_call_audio":
+            # Handle audio webhook (minimal processing for now)
+            logger.info("Received post_call_audio webhook - Logging only")
+            return PostCallSuccessResponse(
+                status="success",
+                message="Audio webhook received",
+                conversation_id=conversation_id,
+                call_sid=call.call_sid,
+                call_status=call.status
+            )
+
         else:
             # Unknown webhook type
             logger.error(f"Unknown webhook type: {request.type}")
@@ -626,7 +692,7 @@ async def receive_post_call(request: PostCallWebhookRequest):
                 content={
                     "status": "error",
                     "message": f"Unknown webhook type: {request.type}",
-                    "details": "Supported types: post_call_transcription, call_initiation_failure"
+                    "details": "Supported types: post_call_transcription, call_initiation_failure, post_call_audio"
                 }
             )
 
