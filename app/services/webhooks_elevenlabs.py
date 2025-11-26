@@ -483,7 +483,7 @@ class PostCallErrorResponse(BaseModel):
     }
 )
 async def receive_post_call(
-    request: PostCallWebhookRequest,
+    raw_request: Request,
     _auth: bool = Depends(validate_elevenlabs_signature)
 ):
     """
@@ -523,8 +523,50 @@ async def receive_post_call(
         Errors never return 200 OK to enable ElevenLabs retry mechanism.
         Supports both successful completion and failure webhooks.
     """
+    # First, get the raw body and log it BEFORE any parsing
+    raw_body = await raw_request.body()
+    raw_body_str = raw_body.decode('utf-8')
+
     logger.info("=" * 100)
-    logger.info(f"ElevenLabs Post-Call Webhook - Received request")
+    logger.info("ElevenLabs Post-Call Webhook - Received request")
+    logger.info(f"Raw Payload: {raw_body_str}")
+    logger.info("=" * 100)
+
+    # Parse the raw body into a dict for logging
+    try:
+        raw_payload_dict = json.loads(raw_body_str)
+        logger.info(f"Parsed Payload (pretty): {json.dumps(raw_payload_dict, indent=2, default=str)}")
+    except json.JSONDecodeError as json_err:
+        logger.error(f"Failed to parse JSON payload: {json_err}")
+        logger.error(f"Raw body that failed: {raw_body_str[:2000]}")  # First 2000 chars
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "status": "error",
+                "message": "Invalid JSON payload",
+                "details": str(json_err)
+            }
+        )
+
+    # Now validate with Pydantic model - this is where 422 errors would normally occur
+    try:
+        request = PostCallWebhookRequest(**raw_payload_dict)
+    except Exception as validation_err:
+        logger.error("=" * 100)
+        logger.error("POST-CALL WEBHOOK PYDANTIC VALIDATION ERROR (would be 422)")
+        logger.error(f"Error Type: {type(validation_err).__name__}")
+        logger.error(f"Error Message: {str(validation_err)}")
+        logger.error(f"Raw Payload: {json.dumps(raw_payload_dict, indent=2, default=str)}")
+        logger.error("=" * 100)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "status": "error",
+                "message": "Validation error",
+                "details": str(validation_err)
+            }
+        )
+
     logger.info(f"Webhook Type: {request.type} | Event Timestamp: {request.event_timestamp}")
     logger.info(f"Conversation ID: {request.data.conversation_id} | Status: {request.data.status}")
     logger.info("=" * 100)
@@ -715,7 +757,12 @@ async def receive_post_call(
 
     except ValueError as e:
         # Validation error or invalid data
-        logger.error(f"Validation error: {str(e)}")
+        logger.error("=" * 100)
+        logger.error("POST-CALL WEBHOOK VALIDATION ERROR")
+        logger.error(f"Error Type: ValueError")
+        logger.error(f"Error Message: {str(e)}")
+        logger.error(f"Raw Payload: {json.dumps(raw_payload_dict, indent=2, default=str)}")
+        logger.error("=" * 100, exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
@@ -727,7 +774,12 @@ async def receive_post_call(
 
     except (OperationalError, DisconnectionError) as e:
         # Database connection failure
-        logger.error(f"Database connection error: {str(e)}", exc_info=True)
+        logger.error("=" * 100)
+        logger.error("POST-CALL WEBHOOK DATABASE ERROR")
+        logger.error(f"Error Type: {type(e).__name__}")
+        logger.error(f"Error Message: {str(e)}")
+        logger.error(f"Raw Payload: {json.dumps(raw_payload_dict, indent=2, default=str)}")
+        logger.error("=" * 100, exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
@@ -739,7 +791,12 @@ async def receive_post_call(
 
     except Exception as e:
         # Unexpected error
-        logger.error(f"Unexpected error processing post-call webhook: {str(e)}", exc_info=True)
+        logger.error("=" * 100)
+        logger.error("POST-CALL WEBHOOK UNEXPECTED ERROR")
+        logger.error(f"Error Type: {type(e).__name__}")
+        logger.error(f"Error Message: {str(e)}")
+        logger.error(f"Raw Payload: {json.dumps(raw_payload_dict, indent=2, default=str)}")
+        logger.error("=" * 100, exc_info=True)
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
