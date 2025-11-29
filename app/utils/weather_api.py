@@ -99,17 +99,21 @@ def get_weather_df(lat_lons: list[tuple[float, float]], bt: BackgroundTasks | No
 
     The DataFrame is sorted by latitude and longitude.
     """
+    # Handle empty lat_lons - return empty DataFrame with correct columns
+    if not lat_lons or len(lat_lons) == 0:
+        return pd.DataFrame(columns=["latitude", "longitude", "weather_info"])
+
     def get_weather_data(lat_lon):
         lat, lon = lat_lon
         return get_weather(lat, lon)
-    
+
     lat_lons_weather = run_parallel_exec(get_weather_data, lat_lons)
-    
+
     if bt is not None:
         bt.add_task(cache_weather_bq, wds=[w for _, w in lat_lons_weather if w is not None])
     else:
         cache_weather_bq(wds=[w for _, w in lat_lons_weather if w is not None])
-    
+
     weather_df = pd.DataFrame([
         {
             "latitude": c[0],
