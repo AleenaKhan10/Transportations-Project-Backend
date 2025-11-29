@@ -115,8 +115,8 @@ def get_weather_df(lat_lons: list[tuple[float, float]], bt: BackgroundTasks | No
             "latitude": c[0],
             "longitude": c[1],
             "weather_info": make_weather_info(w),
-        } | (w.__dict__ if keep_raw_columns_in_df else {}) 
-        for c, w in lat_lons_weather if w is not None
+        } | (w.__dict__ if keep_raw_columns_in_df and w is not None else {})
+        for c, w in lat_lons_weather
     ])
 
     return weather_df
