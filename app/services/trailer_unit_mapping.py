@@ -1,5 +1,6 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from fastapi.responses import JSONResponse
 
 from helpers import logger
@@ -58,31 +59,59 @@ async def get_trailer_unit_mapping_by_id(trailer_id: int):
     return mappings[0]
 
 
+
+@router.get("/motive/{motive_id}", response_model=TrailerUnitMapping)
+async def get_trailer_unit_mapping_by_motive_id(motive_id: int):
+    """
+    Get a trailer unit mapping by MotiveId (requires authentication)
+    """
+    logger.info(f"Getting trailer unit mapping for MotiveId: {motive_id}")
+    mapping = TrailerUnitMapping.get_by_motive_id(motive_id)
+
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Trailer unit mapping with MotiveId '{motive_id}' not found"
+        )
+
+    return mapping
+
+
 @router.post("/upsert", response_model=TrailerUnitMapping)
 async def upsert_trailer_unit_mapping(mapping_data: TrailerUnitMappingCreate):
     """
     Upsert a trailer unit mapping (insert or update if exists) - only updates provided fields
     """
     logger.info(f"Upserting trailer unit mapping for unit: {mapping_data.TrailerUnit}")
-    
+
     if not mapping_data.TrailerUnit:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="TrailerUnit is required for upsert operation"
         )
-    
-    mapping = TrailerUnitMapping.upsert(
-        trailer_unit=mapping_data.TrailerUnit,
-        trailer_id=mapping_data.TrailerID
-    )
-    
+
+    try:
+        mapping = TrailerUnitMapping.upsert(
+            trailer_unit=mapping_data.TrailerUnit,
+            trailer_id=mapping_data.TrailerID,
+            motive_id=mapping_data.MotiveId
+        )
+    except IntegrityError as e:
+        if "MotiveId" in str(e) or "motive" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"MotiveId '{mapping_data.MotiveId}' is already assigned to a different TrailerUnit"
+            )
+        raise
+
     if not mapping:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upsert trailer unit mapping"
         )
-    
+
     return mapping
+
 
 
 @router.post("/", response_model=TrailerUnitMapping)
@@ -100,17 +129,26 @@ async def create_trailer_unit_mapping(mapping_data: TrailerUnitMappingCreate):
             detail=f"Trailer unit mapping with unit '{mapping_data.TrailerUnit}' already exists"
         )
     
-    mapping = TrailerUnitMapping.create(
-        trailer_unit=mapping_data.TrailerUnit,
-        trailer_id=mapping_data.TrailerID
-    )
-    
+    try:
+        mapping = TrailerUnitMapping.create(
+            trailer_unit=mapping_data.TrailerUnit,
+            trailer_id=mapping_data.TrailerID,
+            motive_id=mapping_data.MotiveId
+        )
+    except IntegrityError as e:
+        if "MotiveId" in str(e) or "motive" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"MotiveId '{mapping_data.MotiveId}' is already assigned to a different TrailerUnit"
+            )
+        raise
+
     if not mapping:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create trailer unit mapping"
         )
-    
+
     return mapping
 
 
@@ -129,10 +167,19 @@ async def update_trailer_unit_mapping(trailer_unit: str, mapping_data: TrailerUn
             detail=f"Trailer unit mapping with unit '{trailer_unit}' not found"
         )
     
-    mapping = TrailerUnitMapping.update(
-        trailer_unit=trailer_unit,
-        trailer_id=mapping_data.TrailerID
-    )
+    try:
+        mapping = TrailerUnitMapping.update(
+            trailer_unit=trailer_unit,
+            trailer_id=mapping_data.TrailerID,
+            motive_id=mapping_data.MotiveId
+        )
+    except IntegrityError as e:
+        if "MotiveId" in str(e) or "motive" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"MotiveId '{mapping_data.MotiveId}' is already assigned to a different TrailerUnit"
+            )
+        raise
     
     if not mapping:
         raise HTTPException(
