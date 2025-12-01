@@ -99,9 +99,13 @@ def get_weather_df(lat_lons: list[tuple[float, float]], bt: BackgroundTasks | No
 
     The DataFrame is sorted by latitude and longitude.
     """
-    # Handle empty lat_lons - return empty DataFrame with correct columns
+    # Handle empty lat_lons - return empty DataFrame with correct columns and dtypes
     if lat_lons is None or len(lat_lons) == 0:
-        return pd.DataFrame(columns=["latitude", "longitude", "weather_info"])
+        return pd.DataFrame({
+            "latitude": pd.Series(dtype='float64'),
+            "longitude": pd.Series(dtype='float64'),
+            "weather_info": pd.Series(dtype='object')
+        })
 
     def get_weather_data(lat_lon):
         lat, lon = lat_lon
