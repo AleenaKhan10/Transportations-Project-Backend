@@ -137,6 +137,6 @@ def fetch_latest_alerts(value: int, unit: BQTimeUnit, bt: BackgroundTasks = None
     """
     df = pdg.read_gbq(query, project_id='agy-intelligence-hub', progress_bar_type=None)
     if df.empty:
-        return {"error": "No data found"}
+        return []
     df = add_weather_data_to_grouped_alerts(df, bt)
     return json.loads(df.rename(columns={'t': 'aggregated_data'}).to_json(orient='records'))
