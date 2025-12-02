@@ -14,7 +14,7 @@ class ElevenLabsClient:
     """
 
     # Hardcoded agent configuration (future: configurable from frontend)
-    AGENT_ID = "agent_5501k9czkv3qepy815bm59nt04qk"
+    AGENT_ID = "agent_4801k9zn5r98ebwswz663qj0tdzn"
     AGENT_PHONE_NUMBER_ID = "phnum_8401k9ndc950ewza733y8thmpbrx"
 
     # Retry configuration
