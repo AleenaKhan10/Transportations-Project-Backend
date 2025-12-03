@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class DriverSheduledCalls(SQLModel, table=True):
-    __tablename__ = "call_scheduler"
+    __tablename__ = "driver_sheduled_calls_data"
     __table_args__ = {"extend_existing": True}
 
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
