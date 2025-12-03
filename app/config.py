@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     ELEVENLABS_AGENT_ID: str = ""
     ELEVENLABS_AGENT_PHONE_NUMBER_ID: str = ""
     ELEVENLABS_DISPATCHER_TRANSFER_NUMBER: str = "+923282828886"  # Hardcoded dispatcher transfer number
+    ELEVENLABS_WEBHOOK_SECRET: str = ""
 
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"

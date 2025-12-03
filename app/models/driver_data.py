@@ -1264,7 +1264,8 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 prompt=prompt_text,
                 transfer_to=transfer_to,
                 call_sid=call_sid,
-                dispatcher_name=dispatcher_name
+                dispatcher_name=dispatcher_name,
+                driver_id=driver.driverId
             )
 
             logger.info(f"ElevenLabs call initiated successfully - Conversation ID: {elevenlabs_response.get('conversation_id')}")

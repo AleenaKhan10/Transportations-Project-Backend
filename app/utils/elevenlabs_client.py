@@ -14,7 +14,7 @@ class ElevenLabsClient:
     """
 
     # Hardcoded agent configuration (future: configurable from frontend)
-    AGENT_ID = "agent_5501k9czkv3qepy815bm59nt04qk"
+    AGENT_ID = "agent_4801k9zn5r98ebwswz663qj0tdzn"
     AGENT_PHONE_NUMBER_ID = "phnum_8401k9ndc950ewza733y8thmpbrx"
 
     # Retry configuration
@@ -35,7 +35,8 @@ class ElevenLabsClient:
         prompt: str,
         transfer_to: str,
         call_sid: str,
-        dispatcher_name: str
+        dispatcher_name: str,
+        driver_id: str = None
     ) -> Dict[str, Any]:
         """
         Create an outbound call via ElevenLabs API.
@@ -46,6 +47,7 @@ class ElevenLabsClient:
             transfer_to: Transfer destination phone number
             call_sid: Call session identifier
             dispatcher_name: Name of the dispatcher initiating the call
+            driver_id: Driver identifier for the conversation context
 
         Returns:
             Dictionary containing API response with conversation_id and callSid
@@ -63,7 +65,8 @@ class ElevenLabsClient:
                     "prompt": prompt,
                     "transfer_to": transfer_to,
                     "call_sid": call_sid,
-                    "dispatcher_name": dispatcher_name
+                    "dispatcher_name": dispatcher_name,
+                    "driver_id": driver_id
                 }
             }
         }
