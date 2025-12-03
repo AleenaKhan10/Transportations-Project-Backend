@@ -50,6 +50,12 @@ from services.webhooks_elevenlabs import router as webhooks_elevenlabs_router
 from services.calls import router as calls_router
 from services.websocket_calls import router as websocket_calls_router
 
+
+# driver sheduled calls router
+from services.driver_sheduled_calls_service import (
+    router as driver_sheduled_calls_service,
+)
+
 from db.database import engine
 from sqlmodel import SQLModel
 
@@ -182,7 +188,8 @@ app.include_router(webhooks_elevenlabs_router)
 app.include_router(websocket_calls_router)
 app.include_router(calls_router)
 
-# TEST
+# driver sheduled call
+app.include_router(driver_sheduled_calls_service)
 
 
 # main
