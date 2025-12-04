@@ -12,7 +12,7 @@ router = APIRouter(
     prefix="/drivers", dependencies=[Depends(get_current_user)]
 )
 
-@router.get("/raw", response_model=List[Driver])
+@router.get("/raw", response_model=List[Driver], description="Get all drivers raw data - Deployment verification: Dec 5, 2025 12:04 AM")
 async def get_all_drivers_data_endpoint(limit: int = 5000):
     logger.info("getting all drivers' data")
     return Driver.get_all(limit=limit)
