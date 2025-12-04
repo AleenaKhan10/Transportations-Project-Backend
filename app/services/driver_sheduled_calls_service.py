@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, field_validator
+from typing import List, Optional, Any
 from datetime import datetime
 from models.driver_sheduled_calls import DriverSheduledCalls
 import uuid
@@ -8,40 +8,120 @@ import uuid
 router = APIRouter(prefix="/driver_sheduled_calls", tags=["driver_sheduled_calls"])
 
 # --------------------------------------------------------
-# Input Schema
+# 1. RESPONSE MODEL (The Translator)
+#    Yeh model decide karega ke Frontend ko data kaisa dikhega
+# --------------------------------------------------------
+class DriverScheduleResponse(BaseModel):
+    id: uuid.UUID
+    schedule_group_id: uuid.UUID
+    driver: Optional[str] = None
+    call_scheduled_date_time: datetime
+    status: bool
+    created_at: datetime
+    updated_at: datetime
+    
+    # Notice: Type is List[str], but DB has String
+    reminders: List[str] = []   
+    violations: List[str] = []
+
+    # --- MAGIC HAPPENS HERE (Validators) ---
+    
+    @field_validator('reminders', mode='before')
+    def parse_reminders(cls, v: Any) -> List[str]:
+        # Agar DB se string aayi (e.g., "Helmet, Speed")
+        if isinstance(v, str):
+            if not v.strip(): return [] # Agar empty string hai tow empty list
+            return [item.strip() for item in v.split(',')]
+        # Agar already list hai ya None hai
+        return v if v else []
+
+    @field_validator('violations', mode='before')
+    def parse_violations(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            if not v.strip(): return []
+            return [item.strip() for item in v.split(',')]
+        return v if v else []
+
+    class Config:
+        # Yeh zaroori hai taaky Pydantic SQLModel object ko read kar sakey
+        from_attributes = True 
+
+# --------------------------------------------------------
+# Input Schema for Create/Update (As it is)
 # --------------------------------------------------------
 class ScheduleCreateRequest(BaseModel):
     call_scheduled_date_time: datetime
-    
-    # List of strings because from frontend, it is an array of checkboxes
-    drivers: List[str]      
-    # Same for reminders (Array of strings)
+    drivers: List[str]
     reminders: List[str]
-    # Same for violations (Array of strings)    
-    violations: List[str]  
-    
+    violations: List[str]
 
-# --------------------------------------------------------
-# UPDATE SCHEMA (Complete Payload expected)
-# --------------------------------------------------------
 class ScheduleUpdateRequest(BaseModel):
     call_scheduled_date_time: datetime
-    driver: str             # Single string (Updates only when at a time)
-    status: bool            # Whatever the status is send from frontend
-    reminders: List[str]    # Array 
-    violations: List[str]   # Array 
+    driver: str
+    status: bool
+    reminders: List[str]
+    violations: List[str]
 
 # --------------------------------------------------------
-# GET Endpoint
+# GET Endpoint (Updated response_model)
 # --------------------------------------------------------
-@router.get("/", response_model=List[DriverSheduledCalls])
+@router.get("/", response_model=List[DriverScheduleResponse])
 def fetch_all_driver_sheduled_calls():
     try:
-        data = DriverSheduledCalls.get_all_sheduled_call_records()
-        return data
+        # 1. DB se Raw Data (Strings wala) ayega
+        db_records = DriverSheduledCalls.get_all_sheduled_call_records()
+        
+        # 2. Humne 'reminder' (singular) ko 'reminders' (plural) mein map karna hai
+        # Kyun k DB me column ka naam 'reminder' hai lekin Response Model me 'reminders' hai
+        results = []
+        for record in db_records:
+            # Hum manually object bana rahy hain taaky mapping sahi ho
+            results.append(DriverScheduleResponse(
+                id=record.id,
+                schedule_group_id=record.schedule_group_id,
+                driver=record.driver,
+                call_scheduled_date_time=record.call_scheduled_date_time,
+                status=record.status,
+                created_at=record.created_at,
+                updated_at=record.updated_at,
+                # YAHAN MAPPING HO RAHI HAI: DB column -> Response field
+                reminders=record.reminder, 
+                violations=record.violation 
+            ))
+            
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --------------------------------------------------------
+# GET BY ID (Updated response_model)
+# --------------------------------------------------------
+@router.get("/{query_id}", response_model=List[DriverScheduleResponse])
+def get_schedule_by_id_or_group(query_id: uuid.UUID):
+    try:
+        db_records = DriverSheduledCalls.get_by_id_or_group(query_id)
+        if not db_records:
+            raise HTTPException(status_code=404, detail="No records found")
+            
+        # Converting DB objects to Response objects
+        results = []
+        for record in db_records:
+            results.append(DriverScheduleResponse(
+                id=record.id,
+                schedule_group_id=record.schedule_group_id,
+                driver=record.driver,
+                call_scheduled_date_time=record.call_scheduled_date_time,
+                status=record.status,
+                created_at=record.created_at,
+                updated_at=record.updated_at,
+                reminders=record.reminder,   # Passing string, Validator will make it List
+                violations=record.violation  # Passing string, Validator will make it List
+            ))
+        return results
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # --------------------------------------------------------
 # POST Endpoint
 # --------------------------------------------------------
@@ -53,26 +133,6 @@ def create_driver_schedule(payload: ScheduleCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --------------------------------------------------------
-# GET Endpoint: Search by Record ID or Group ID
-# --------------------------------------------------------
-@router.get("/{query_id}", response_model=List[DriverSheduledCalls])
-def get_schedule_by_id_or_group(query_id: uuid.UUID):
-    try:
-        # Calling the function of get_by_id_or_group
-        records = DriverSheduledCalls.get_by_id_or_group(query_id)
-        
-        # If found nothing, it returns simply that neither of the id's were found
-        if not records:
-            raise HTTPException(status_code=404, detail="No records found for this ID (neither Record ID nor Group ID)")
-            
-        return records
-        
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
 # --------------------------------------------------------
 # DELETE ENDPOINT (Strictly by ID)
 # --------------------------------------------------------
