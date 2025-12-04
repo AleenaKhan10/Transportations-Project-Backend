@@ -15,7 +15,6 @@ class DriverSheduledCalls(SQLModel, table=True):
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     schedule_group_id: uuid.UUID = Field(index=True)
 
-    # Yeh wo column hai jahan wo lambi string store hogi
     driver: Optional[str] = None 
     reminder: Optional[str] = None
     violation: Optional[str] = None
@@ -69,11 +68,11 @@ class DriverSheduledCalls(SQLModel, table=True):
                     # Har string (checkbox selection) k liye aik row
                     record = cls(
                         schedule_group_id=group_id,
-                        driver=driver_input_string,  # Jo bhi lambi string aayi, wo yahan save hogi
+                        driver=driver_input_string,  #
                         reminder=reminders_str,
                         violation=violations_str,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
-                        status=False,  # Requirements k mutabik False
+                        status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
@@ -99,21 +98,60 @@ class DriverSheduledCalls(SQLModel, table=True):
     @classmethod
     def get_by_id_or_group(cls, search_id: uuid.UUID) -> List["DriverSheduledCalls"]:
         """
-        Yeh function pehly check karega ke kya yeh ID kisi specific record ki hai?
-        Agar nahi, tow check karega ke kya yeh Group ID hai?
+        This function first checks the ID for a specific record? If not, then it will check the search_id is of Group ID?
         """
         with cls.get_session() as session:
-            # 1. Pehly check: Kya yeh Primary Key (Record ID) hai?
-            # Hum .all() use kar rhy hain taaky return hamesha List hi ho
             statement_pk = select(cls).where(cls.id == search_id)
             results_pk = session.exec(statement_pk).all()
 
             if results_pk:
-                # Agar record mil gaya tow wapas bhej do
+                # If found then return
                 return results_pk
 
-            # 2. Dusra check: Agar uper nahi mila, tow kya yeh Group ID hai?
+            # 2. Dusra check: If not found above, it is most likely be group id
             statement_group = select(cls).where(cls.schedule_group_id == search_id)
             results_group = session.exec(statement_group).all()
 
             return results_group
+    
+    
+    # ---------------------------------------------------------------------
+    # DELETE BASED ON ID (Primary Key Only) - STRICT
+    # ---------------------------------------------------------------------
+    @classmethod
+    def delete_record_by_id(cls, record_id: uuid.UUID) -> bool:
+        """
+        Matches only Primary Key (ID)
+        If Group ID is passed, it will return False
+        """
+        with cls.get_session() as session:
+            record = session.get(cls, record_id)
+            
+            if not record:
+                return False  # Record not foudn
+            
+            session.delete(record)
+            session.commit()
+            return True   # Deleted the founded record
+    
+    # ---------------------------------------------------------------------
+    # UPDATE SINGLE RECORD (PATCH)
+    # ---------------------------------------------------------------------
+    @classmethod
+    def update_record(cls, record_id: uuid.UUID, update_data: Dict) -> Optional["DriverSheduledCalls"]:
+        with cls.get_session() as session:
+            record = session.get(cls, record_id)
+            if not record:
+                return None
+            
+            # Update the received data only
+            for key, value in update_data.items():
+                setattr(record, key, value)
+            
+            record.updated_at = datetime.utcnow()
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record
+        
+        
