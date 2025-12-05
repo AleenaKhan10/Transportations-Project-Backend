@@ -1,5 +1,22 @@
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest', '-f', 'main.Dockerfile', '.']
+  # Build main service image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest', '-f', 'main.Dockerfile', '.']
+
+  # Push main service image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'agy-backend'  # Replace with your actual Cloud Run service name
+      - '--image=gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest'
+      - '--region=us-central1'  # Replace with your actual region
+      - '--platform=managed'
+      - '--allow-unauthenticated'  # Remove if you need authentication
+
 images:
-- 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest'
+  - 'gcr.io/agy-intelligence-hub/github.com/agylogistics/agy-backend:latest'
