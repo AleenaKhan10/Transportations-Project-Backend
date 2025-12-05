@@ -25,4 +25,4 @@ USER appuser
 
 # Use PORT environment variable for Cloud Run compatibility
 # Using Uvicorn directly for full WebSocket support (required for /ws/calls/transcriptions)
-CMD exec uvicorn main:app --host 0.0.0.0 --port $PORT --ws websockets
+CMD exec uvicorn main:app --host 0.0.0.0 --port $PORT

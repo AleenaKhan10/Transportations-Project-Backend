@@ -272,9 +272,15 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             call_end_time = None
 
         # Determine status
+        # Note: call_successful indicates whether the AI accomplished its goal,
+        # NOT whether the call itself completed. A call is COMPLETED when
+        # conversation_status is 'done' OR 'failed' (both mean the call ended).
+        # ElevenLabs uses 'failed' for calls that ended due to errors (e.g., LLM failure)
+        # but the call itself still happened. The call_successful field is stored
+        # separately for business logic.
         conversation_status = conversation_data.get('status', 'unknown')
-        if conversation_status == 'done':
-            new_status = CallStatus.COMPLETED if call_successful else CallStatus.FAILED
+        if conversation_status in ('done', 'failed'):
+            new_status = CallStatus.COMPLETED
         else:
             new_status = CallStatus.IN_PROGRESS
 
@@ -340,7 +346,7 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             "cost": cost_value,
             "transcriptions_added": transcriptions_added,
             "transcriptions_total": existing_count + transcriptions_added,
-            "should_stop_polling": conversation_status == 'done',  # Frontend can use this to stop polling
+            "should_stop_polling": conversation_status in ('done', 'failed'),  # Frontend can use this to stop polling
             "conversation_data": conversation_data
         }
 
