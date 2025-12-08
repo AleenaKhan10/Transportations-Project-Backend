@@ -59,6 +59,9 @@ from services.driver_sheduled_calls_service import (
 from db.database import engine
 from sqlmodel import SQLModel
 
+# Scheduler imports
+from utils.scheduler import init_scheduler, shutdown_scheduler
+
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -121,6 +124,8 @@ app.add_middleware(
 )
 
 app.add_event_handler("startup", create_db_and_tables)
+app.add_event_handler("startup", init_scheduler)
+app.add_event_handler("shutdown", shutdown_scheduler)
 
 
 # Global exception handler to catch unhandled API errors
