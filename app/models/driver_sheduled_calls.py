@@ -8,6 +8,7 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+
 class DriverSheduledCalls(SQLModel, table=True):
     __tablename__ = "driver_sheduled_calls_data"
     __table_args__ = {"extend_existing": True}
@@ -15,14 +16,14 @@ class DriverSheduledCalls(SQLModel, table=True):
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     schedule_group_id: uuid.UUID = Field(index=True)
 
-    driver: Optional[str] = None 
+    driver: Optional[str] = None
     reminder: Optional[str] = None
     violation: Optional[str] = None
     custom_rule: Optional[str] = None
 
     call_scheduled_date_time: datetime
 
-    status: bool = True 
+    status: bool = True
 
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
@@ -54,18 +55,18 @@ class DriverSheduledCalls(SQLModel, table=True):
         """
         # 1. Generate unique Group ID
         group_id = uuid.uuid4()
-        
+
         # 2. Process Reminders/Violations lists to String
         reminders_str = ", ".join(payload.reminders) if payload.reminders else None
         violations_str = ", ".join(payload.violations) if payload.violations else None
-        
+
         new_records = []
 
         try:
             with cls.get_session() as session:
                 # 3. Loop through the array of strings (Selected Checkbox values)
                 for driver_input_string in payload.drivers:
-                    
+
                     # Har string (checkbox selection) k liye aik row
                     record = cls(
                         schedule_group_id=group_id,
@@ -73,27 +74,27 @@ class DriverSheduledCalls(SQLModel, table=True):
                         reminder=reminders_str,
                         violation=violations_str,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
-                        custom_rule="static rule by ibrar"
+                        custom_rule="static rule by ibrar",
                         status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
+                        updated_at=datetime.utcnow(),
                     )
                     session.add(record)
                     new_records.append(record)
-                
+
                 # 4. Commit (Save)
                 session.commit()
-                
+
                 return {
                     "message": "Schedule created successfully",
                     "schedule_group_id": str(group_id),
                     "total_records": len(new_records),
                 }
-                
+
         except Exception as e:
             logger.error(f"Error in create_bulk_schedule: {e}")
             raise e
-    
+
     # ---------------------------------------------------------------------
     # GET BY ID OR GROUP ID (Smart Search)
     # ---------------------------------------------------------------------
@@ -115,8 +116,7 @@ class DriverSheduledCalls(SQLModel, table=True):
             results_group = session.exec(statement_group).all()
 
             return results_group
-    
-    
+
     # ---------------------------------------------------------------------
     # DELETE BASED ON ID (Primary Key Only) - STRICT
     # ---------------------------------------------------------------------
@@ -128,32 +128,32 @@ class DriverSheduledCalls(SQLModel, table=True):
         """
         with cls.get_session() as session:
             record = session.get(cls, record_id)
-            
+
             if not record:
                 return False  # Record not foudn
-            
+
             session.delete(record)
             session.commit()
-            return True   # Deleted the founded record
-    
+            return True  # Deleted the founded record
+
     # ---------------------------------------------------------------------
     # UPDATE SINGLE RECORD (PATCH)
     # ---------------------------------------------------------------------
     @classmethod
-    def update_record(cls, record_id: uuid.UUID, update_data: Dict) -> Optional["DriverSheduledCalls"]:
+    def update_record(
+        cls, record_id: uuid.UUID, update_data: Dict
+    ) -> Optional["DriverSheduledCalls"]:
         with cls.get_session() as session:
             record = session.get(cls, record_id)
             if not record:
                 return None
-            
+
             # Update the received data only
             for key, value in update_data.items():
                 setattr(record, key, value)
-            
+
             record.updated_at = datetime.utcnow()
             session.add(record)
             session.commit()
             session.refresh(record)
             return record
-        
-        
