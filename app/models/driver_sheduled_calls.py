@@ -61,6 +61,8 @@ class DriverSheduledCalls(SQLModel, table=True):
         violations_str = ", ".join(payload.violations) if payload.violations else None
 
         new_records = []
+        print("paylaod")
+        print(payload)
 
         try:
             with cls.get_session() as session:
@@ -74,7 +76,7 @@ class DriverSheduledCalls(SQLModel, table=True):
                         reminder=reminders_str,
                         violation=violations_str,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
-                        custom_rule="static rule by ibrar",
+                        custom_rule=payload.custom_rule,
                         status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),
