@@ -24,6 +24,7 @@ class DriverScheduleResponse(BaseModel):
     # Notice: Type is List[str], but DB has String
     reminders: List[str] = []
     violations: List[str] = []
+    custom_rule: Optional[str] = None
 
     # --- MAGIC HAPPENS HERE (Validators) ---
 
@@ -95,6 +96,7 @@ def fetch_all_driver_sheduled_calls():
                     # YAHAN MAPPING HO RAHI HAI: DB column -> Response field
                     reminders=record.reminder,
                     violations=record.violation,
+                    custom_rule=record.custom_rule,
                 )
             )
 
