@@ -18,6 +18,7 @@ class DriverSheduledCalls(SQLModel, table=True):
     driver: Optional[str] = None 
     reminder: Optional[str] = None
     violation: Optional[str] = None
+    custom_rule: Optional[str] = None
 
     call_scheduled_date_time: datetime
 
@@ -72,6 +73,7 @@ class DriverSheduledCalls(SQLModel, table=True):
                         reminder=reminders_str,
                         violation=violations_str,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
+                        custom_rule="static rule by ibrar"
                         status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
