@@ -36,6 +36,7 @@ class CallResponse(BaseModel):
     call_sid: str
     conversation_id: Optional[str]
     driver_id: Optional[str]
+    trip_id: Optional[str]
     status: str
     call_start_time: str
     call_end_time: Optional[str]
@@ -140,6 +141,7 @@ async def list_calls(
                         call_successful=call.call_successful,
                         created_at=call.created_at.isoformat(),
                         updated_at=call.updated_at.isoformat(),
+                        trip_id=call.trip_id,
                     )
                 )
             # TEST

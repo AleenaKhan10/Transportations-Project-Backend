@@ -9,7 +9,9 @@ class ViolationDetail(BaseModel):
 
 
 class Violations(BaseModel):
-    tripId: Optional[str] = None  # Optional - will be fetched automatically from driverId
+    tripId: Optional[str] = (
+        None  # Optional - will be fetched automatically from driverId
+    )
     violationDetails: List[ViolationDetail]
 
 
@@ -25,6 +27,7 @@ class BatchCallRequest(BaseModel):
     callType: str
     timestamp: str
     drivers: List[DriverData]
+    trip_id: str
 
 
 # --- Request Schema CLOSE ---
