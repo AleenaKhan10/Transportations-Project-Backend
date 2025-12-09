@@ -52,8 +52,7 @@ class ScheduledCallsProcessor:
         with Session(engine) as session:
             # Search by firstName and lastName
             statement = select(Driver).where(
-                Driver.firstName == first_name,
-                Driver.lastName == last_name
+                Driver.firstName == first_name, Driver.lastName == last_name
             )
             result = session.exec(statement).first()
 
@@ -63,7 +62,9 @@ class ScheduledCallsProcessor:
             # Fallback: try searching by driverId in case it's actually an ID
             return Driver.get_by_id(driver_name)
 
-    def build_payload(self, scheduled_call: DriverSheduledCalls, driver: Driver) -> dict:
+    def build_payload(
+        self, scheduled_call: DriverSheduledCalls, driver: Driver
+    ) -> dict:
         """
         Build the API payload for the call-elevenlabs endpoint.
 
@@ -73,21 +74,19 @@ class ScheduledCallsProcessor:
 
         # Process violations (comma-separated string)
         if scheduled_call.violation:
-            violations = [v.strip() for v in scheduled_call.violation.split(",") if v.strip()]
+            violations = [
+                v.strip() for v in scheduled_call.violation.split(",") if v.strip()
+            ]
             for v in violations:
-                violation_details.append({
-                    "type": "VIOLATION",
-                    "description": v
-                })
+                violation_details.append({"type": "VIOLATION", "description": v})
 
         # Process reminders (comma-separated string)
         if scheduled_call.reminder:
-            reminders = [r.strip() for r in scheduled_call.reminder.split(",") if r.strip()]
+            reminders = [
+                r.strip() for r in scheduled_call.reminder.split(",") if r.strip()
+            ]
             for r in reminders:
-                violation_details.append({
-                    "type": "REMINDER",
-                    "description": r
-                })
+                violation_details.append({"type": "REMINDER", "description": r})
 
         # Build driver name
         driver_name = f"{driver.firstName or ''} {driver.lastName or ''}".strip()
@@ -97,16 +96,15 @@ class ScheduledCallsProcessor:
         payload = {
             "callType": "violation",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "drivers": [{
-                "driverId": driver.driverId,
-                "driverName": driver_name,
-                "phoneNumber": driver.phoneNumber or "",
-                "customRules": "",
-                "violations": {
-                    "tripId": "",
-                    "violationDetails": violation_details
+            "drivers": [
+                {
+                    "driverId": driver.driverId,
+                    "driverName": driver_name,
+                    "phoneNumber": driver.phoneNumber or "",
+                    "customRules": scheduled_call.custom_rule or "",
+                    "violations": {"tripId": "", "violationDetails": violation_details},
                 }
-            }]
+            ],
         }
 
         return payload
@@ -123,10 +121,14 @@ class ScheduledCallsProcessor:
                 response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
-                    logger.info(f"[SCHEDULER] Successfully triggered call for driver {payload['drivers'][0]['driverId']}")
+                    logger.info(
+                        f"[SCHEDULER] Successfully triggered call for driver {payload['drivers'][0]['driverId']}"
+                    )
                     return True
                 else:
-                    logger.error(f"[SCHEDULER] Failed to trigger call. Status: {response.status_code}, Response: {response.text}")
+                    logger.error(
+                        f"[SCHEDULER] Failed to trigger call. Status: {response.status_code}, Response: {response.text}"
+                    )
                     return False
 
         except Exception as e:
@@ -153,19 +155,25 @@ class ScheduledCallsProcessor:
 
             for scheduled_call in due_calls:
                 try:
-                    logger.info(f"[SCHEDULER] Processing scheduled call {scheduled_call.id} for driver {scheduled_call.driver}")
+                    logger.info(
+                        f"[SCHEDULER] Processing scheduled call {scheduled_call.id} for driver {scheduled_call.driver}"
+                    )
 
                     # Get driver information
                     driver = self.get_driver_info(scheduled_call.driver)
 
                     if not driver:
-                        logger.warning(f"[SCHEDULER] Driver not found: {scheduled_call.driver}. Skipping call.")
+                        logger.warning(
+                            f"[SCHEDULER] Driver not found: {scheduled_call.driver}. Skipping call."
+                        )
                         # Still delete the record to avoid repeated attempts
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
                     if not driver.phoneNumber:
-                        logger.warning(f"[SCHEDULER] Driver {scheduled_call.driver} has no phone number. Skipping call.")
+                        logger.warning(
+                            f"[SCHEDULER] Driver {scheduled_call.driver} has no phone number. Skipping call."
+                        )
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
@@ -174,7 +182,9 @@ class ScheduledCallsProcessor:
 
                     # Check if there are any violation details
                     if not payload["drivers"][0]["violations"]["violationDetails"]:
-                        logger.warning(f"[SCHEDULER] No violations or reminders for scheduled call {scheduled_call.id}. Skipping.")
+                        logger.warning(
+                            f"[SCHEDULER] No violations or reminders for scheduled call {scheduled_call.id}. Skipping."
+                        )
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
@@ -185,19 +195,30 @@ class ScheduledCallsProcessor:
                         # Delete the record after successful call
                         deleted = self.delete_scheduled_call(scheduled_call.id)
                         if deleted:
-                            logger.info(f"[SCHEDULER] Successfully processed and deleted scheduled call {scheduled_call.id}")
+                            logger.info(
+                                f"[SCHEDULER] Successfully processed and deleted scheduled call {scheduled_call.id}"
+                            )
                         else:
-                            logger.warning(f"[SCHEDULER] Call triggered but failed to delete record {scheduled_call.id}")
+                            logger.warning(
+                                f"[SCHEDULER] Call triggered but failed to delete record {scheduled_call.id}"
+                            )
                     else:
-                        logger.error(f"[SCHEDULER] Failed to trigger call for scheduled call {scheduled_call.id}")
+                        logger.error(
+                            f"[SCHEDULER] Failed to trigger call for scheduled call {scheduled_call.id}"
+                        )
                         # Don't delete - will retry on next run
 
                 except Exception as e:
-                    logger.error(f"[SCHEDULER] Error processing scheduled call {scheduled_call.id}: {str(e)}", exc_info=True)
+                    logger.error(
+                        f"[SCHEDULER] Error processing scheduled call {scheduled_call.id}: {str(e)}",
+                        exc_info=True,
+                    )
                     continue
 
         except Exception as e:
-            logger.error(f"[SCHEDULER] Error in process_due_calls: {str(e)}", exc_info=True)
+            logger.error(
+                f"[SCHEDULER] Error in process_due_calls: {str(e)}", exc_info=True
+            )
 
         logger.info("[SCHEDULER] Completed scheduled calls processing")
 
