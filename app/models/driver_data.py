@@ -1370,7 +1370,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 call_sid=call_sid,
                 driver_id=driver.driverId,
                 call_start_time=datetime.now(timezone.utc),
-                trip_id=request.trip_id,
+                trip_id=driver.violations.tripId or request.trip_id,
                 status=CallStatus.IN_PROGRESS,
             )
             logger.info(
