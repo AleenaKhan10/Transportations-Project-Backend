@@ -129,7 +129,7 @@ class Call(SQLModel, table=True):
         call_sid: str,
         driver_id: str,
         call_start_time: datetime,
-        trip_id: str,
+        trip_id: Optional[str] = None,
         status: CallStatus = CallStatus.IN_PROGRESS,
     ) -> "Call":
         """
@@ -142,6 +142,7 @@ class Call(SQLModel, table=True):
             call_sid: Generated call identifier (format: EL_{driverId}_{timestamp})
             driver_id: Driver ID
             call_start_time: Timezone-aware UTC datetime when call is initiated
+            trip_id: Optional trip ID (can be None if no active trip)
             status: Initial status (default: IN_PROGRESS)
 
         Returns:

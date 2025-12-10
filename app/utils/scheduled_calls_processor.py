@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from db import engine
 from models.driver_sheduled_calls import DriverSheduledCalls
 from models.drivers import Driver
+from models.trips import Trip
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -62,13 +63,41 @@ class ScheduledCallsProcessor:
             # Fallback: try searching by driverId in case it's actually an ID
             return Driver.get_by_id(driver_name)
 
+    def get_active_trip_for_driver(self, driver_id: str) -> Optional[Trip]:
+        """
+        Get the active trip for a driver by checking substatus.
+
+        Active substatus values:
+        - 'en route to pickup', 'en route to pick up', 'loading',
+        - 'en route to delivery', 'en route to waypoint', 'unloading'
+
+        Returns the active trip or None if no active trip found.
+        """
+        try:
+            active_trip = Trip.get_active_trip_by_driver_id(driver_id)
+            if active_trip:
+                logger.info(
+                    f"[SCHEDULER] Found active trip {active_trip.tripId} for driver {driver_id} "
+                    f"with substatus: {active_trip.subStatusLabel}"
+                )
+            else:
+                logger.info(f"[SCHEDULER] No active trip found for driver {driver_id}")
+            return active_trip
+        except Exception as e:
+            logger.error(
+                f"[SCHEDULER] Error getting active trip for driver {driver_id}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
     def build_payload(
-        self, scheduled_call: DriverSheduledCalls, driver: Driver
+        self, scheduled_call: DriverSheduledCalls, driver: Driver, trip_id: Optional[str] = None
     ) -> dict:
         """
         Build the API payload for the call-elevenlabs endpoint.
 
         Maps violations and reminders to violationDetails with appropriate types.
+        Includes trip_id and custom_rules in the payload.
         """
         violation_details = []
 
@@ -93,19 +122,28 @@ class ScheduledCallsProcessor:
         if not driver_name:
             driver_name = driver.driverId
 
+        # Get custom rules from scheduled call
+        custom_rules = scheduled_call.custom_rule or ""
+
         payload = {
             "callType": "violation",
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "trip_id": trip_id or "",  # Pass trip_id at root level
             "drivers": [
                 {
                     "driverId": driver.driverId,
                     "driverName": driver_name,
                     "phoneNumber": driver.phoneNumber or "",
-                    "customRules": scheduled_call.custom_rule or "",
-                    "violations": {"tripId": "", "violationDetails": violation_details},
+                    "customRules": custom_rules,  # Pass custom rules
+                    "violations": {"tripId": trip_id or "", "violationDetails": violation_details},
                 }
             ],
         }
+
+        logger.info(
+            f"[SCHEDULER] Built payload for driver {driver.driverId} with trip_id: {trip_id}, "
+            f"custom_rules: {custom_rules[:50] if custom_rules else 'None'}..."
+        )
 
         return payload
 
@@ -177,8 +215,21 @@ class ScheduledCallsProcessor:
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
-                    # Build payload
-                    payload = self.build_payload(scheduled_call, driver)
+                    # Get active trip for the driver (filter by substatus)
+                    active_trip = self.get_active_trip_for_driver(driver.driverId)
+                    trip_id = active_trip.tripId if active_trip else None
+
+                    if trip_id:
+                        logger.info(
+                            f"[SCHEDULER] Using active trip {trip_id} for driver {driver.driverId}"
+                        )
+                    else:
+                        logger.info(
+                            f"[SCHEDULER] No active trip found for driver {driver.driverId}, proceeding without trip_id"
+                        )
+
+                    # Build payload with trip_id and custom_rules
+                    payload = self.build_payload(scheduled_call, driver, trip_id)
 
                     # Check if there are any violation details
                     if not payload["drivers"][0]["violations"]["violationDetails"]:

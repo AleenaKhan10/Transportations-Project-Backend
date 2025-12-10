@@ -92,10 +92,57 @@ class Trip(SQLModel, table=True):
                 statement = select(cls).where(cls.primaryDriverId == driver_id)
                 trips = session.exec(statement).all()
                 return list(trips)
-                
+
             except Exception as err:
                 logger.error(f'Database query error: {err}', exc_info=True)
                 return []
+
+    @classmethod
+    def get_active_trip_by_driver_id(cls, driver_id: str) -> Optional["Trip"]:
+        """
+        Get the active trip for a driver by filtering on subStatusLabel.
+
+        Active trip substatus values:
+        - 'en route to pickup'
+        - 'en route to pick up'
+        - 'loading'
+        - 'en route to delivery'
+        - 'en route to waypoint'
+        - 'unloading'
+
+        Excludes 'assigned' status as those are not active trips.
+        Returns the first matching trip or None if no active trip found.
+        """
+        # Define active substatus values (case-insensitive matching)
+        active_substatus_values = [
+            'en route to pickup',
+            'en route to pick up',
+            'loading',
+            'en route to delivery',
+            'en route to waypoint',
+            'unloading',
+        ]
+
+        with cls.get_session() as session:
+            try:
+                # Get all trips for the driver
+                statement = select(cls).where(cls.primaryDriverId == driver_id)
+                trips = session.exec(statement).all()
+
+                # Filter by substatus (case-insensitive)
+                for trip in trips:
+                    if trip.subStatusLabel:
+                        substatus_lower = trip.subStatusLabel.lower().strip()
+                        if substatus_lower in active_substatus_values:
+                            logger.info(f'Found active trip {trip.tripId} for driver {driver_id} with substatus: {trip.subStatusLabel}')
+                            return trip
+
+                logger.info(f'No active trip found for driver {driver_id}')
+                return None
+
+            except Exception as err:
+                logger.error(f'Database query error getting active trip: {err}', exc_info=True)
+                return None
     
     @classmethod
     def create(cls, **kwargs) -> Optional["Trip"]:

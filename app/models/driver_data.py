@@ -1366,11 +1366,20 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
 
         print("--------------------- CALL RECORD IS CREATING MAIN -------------------")
         try:
+            # Get trip_id - prefer from violations, then from request, handle empty strings
+            final_trip_id = None
+            if driver.violations and driver.violations.tripId and driver.violations.tripId.strip():
+                final_trip_id = driver.violations.tripId.strip()
+            elif request.trip_id and request.trip_id.strip():
+                final_trip_id = request.trip_id.strip()
+
+            logger.info(f"Using trip_id: {final_trip_id} for call record")
+
             call_record = Call.create_call_with_call_sid(
                 call_sid=call_sid,
                 driver_id=driver.driverId,
                 call_start_time=datetime.now(timezone.utc),
-                trip_id=driver.violations.tripId or request.trip_id,
+                trip_id=final_trip_id,  # Can be None if no trip found
                 status=CallStatus.IN_PROGRESS,
             )
             logger.info(
