@@ -231,13 +231,20 @@ class ScheduledCallsProcessor:
                     # Build payload with trip_id and custom_rules
                     payload = self.build_payload(scheduled_call, driver, trip_id)
 
-                    # Check if there are any violation details
-                    if not payload["drivers"][0]["violations"]["violationDetails"]:
+                    # Check if there's anything to say - either violations/reminders OR custom_rule
+                    has_violation_details = bool(payload["drivers"][0]["violations"]["violationDetails"])
+                    has_custom_rules = bool(payload["drivers"][0].get("customRules", "").strip())
+
+                    if not has_violation_details and not has_custom_rules:
                         logger.warning(
-                            f"[SCHEDULER] No violations or reminders for scheduled call {scheduled_call.id}. Skipping."
+                            f"[SCHEDULER] No violations, reminders, or custom rules for scheduled call {scheduled_call.id}. Skipping."
                         )
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
+
+                    logger.info(
+                        f"[SCHEDULER] Payload has violationDetails: {has_violation_details}, customRules: {has_custom_rules}"
+                    )
 
                     # Trigger the call
                     success = await self.trigger_call(payload)
