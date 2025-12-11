@@ -39,6 +39,7 @@ async def get_user(
             "department": user.department,
             "role": user.role or "user",
             "allowed_pages": user.allowed_pages or [],
+            "allowed_actions": user.allowed_actions or [],
             "two_factor_enabled": user.two_factor_enabled,
             "email_verified": user.email_verified,
             "last_login_at": user.last_login_at,
