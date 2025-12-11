@@ -23,6 +23,7 @@ router = APIRouter(prefix="/calls", tags=["calls"])
 # Response Models
 class TranscriptMessage(BaseModel):
     """Single transcript message."""
+
     role: str  # "agent" or "driver"
     text: str
     timestamp: str
@@ -31,9 +32,11 @@ class TranscriptMessage(BaseModel):
 
 class CallResponse(BaseModel):
     """Call response model."""
+
     call_sid: str
     conversation_id: Optional[str]
     driver_id: Optional[str]
+    trip_id: Optional[str]
     status: str
     call_start_time: str
     call_end_time: Optional[str]
@@ -48,6 +51,7 @@ class CallResponse(BaseModel):
 
 class CallWithTranscriptResponse(BaseModel):
     """Call response with transcript."""
+
     call_sid: str
     conversation_id: Optional[str]
     driver_id: Optional[str]
@@ -65,6 +69,7 @@ class CallWithTranscriptResponse(BaseModel):
 
 # Endpoints
 
+
 @router.get(
     "",
     response_model=List[CallResponse],
@@ -79,12 +84,14 @@ class CallWithTranscriptResponse(BaseModel):
 
     **Response:**
     List of call records with basic metadata (no transcripts)
-    """
+    """,
 )
 async def list_calls(
-    status: Optional[str] = Query(None, description="Filter by status: in_progress, completed, failed"),
+    status: Optional[str] = Query(
+        None, description="Filter by status: in_progress, completed, failed"
+    ),
     driver_id: Optional[str] = Query(None, description="Filter by driver ID"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum number of results")
+    limit: int = Query(100, ge=1, le=500, description="Maximum number of results"),
 ):
     """
     List all calls with optional filtering.
@@ -111,32 +118,39 @@ async def list_calls(
             for call in calls:
                 duration = None
                 if call.call_start_time and call.call_end_time:
-                    duration = int((call.call_end_time - call.call_start_time).total_seconds())
+                    duration = int(
+                        (call.call_end_time - call.call_start_time).total_seconds()
+                    )
 
-                result.append(CallResponse(
-                    call_sid=call.call_sid,
-                    conversation_id=call.conversation_id,
-                    driver_id=call.driver_id,
-                    status=call.status.value,
-                    call_start_time=call.call_start_time.isoformat(),
-                    call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
-                    duration_seconds=duration,
-                    transcript_summary=call.transcript_summary,
-                    call_duration_seconds=call.call_duration_seconds,
-                    cost=call.cost,
-                    call_successful=call.call_successful,
-                    created_at=call.created_at.isoformat(),
-                    updated_at=call.updated_at.isoformat()
-                ))
+                result.append(
+                    CallResponse(
+                        call_sid=call.call_sid,
+                        conversation_id=call.conversation_id,
+                        driver_id=call.driver_id,
+                        status=call.status.value,
+                        call_start_time=call.call_start_time.isoformat(),
+                        call_end_time=(
+                            call.call_end_time.isoformat()
+                            if call.call_end_time
+                            else None
+                        ),
+                        duration_seconds=duration,
+                        transcript_summary=call.transcript_summary,
+                        call_duration_seconds=call.call_duration_seconds,
+                        cost=call.cost,
+                        call_successful=call.call_successful,
+                        created_at=call.created_at.isoformat(),
+                        updated_at=call.updated_at.isoformat(),
+                        trip_id=call.trip_id,
+                    )
+                )
+            # TEST
 
             return result
 
     except Exception as err:
         logger.error(f"Error listing calls: {str(err)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list calls: {str(err)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to list calls: {str(err)}")
 
 
 @router.get(
@@ -150,7 +164,7 @@ async def list_calls(
 
     **Response:**
     List of active call records
-    """
+    """,
 )
 async def get_active_calls():
     """
@@ -162,38 +176,52 @@ async def get_active_calls():
         from db.database import engine
 
         with Session(engine) as session:
-            stmt = select(Call).where(Call.status == CallStatus.IN_PROGRESS).order_by(Call.call_start_time.desc())
+            stmt = (
+                select(Call)
+                .where(Call.status == CallStatus.IN_PROGRESS)
+                .order_by(Call.call_start_time.desc())
+            )
             calls = session.exec(stmt).all()
 
             result = []
             for call in calls:
                 duration = None
                 if call.call_start_time:
-                    duration = int((datetime.utcnow() - call.call_start_time.replace(tzinfo=None)).total_seconds())
+                    duration = int(
+                        (
+                            datetime.utcnow()
+                            - call.call_start_time.replace(tzinfo=None)
+                        ).total_seconds()
+                    )
 
-                result.append(CallResponse(
-                    call_sid=call.call_sid,
-                    conversation_id=call.conversation_id,
-                    driver_id=call.driver_id,
-                    status=call.status.value,
-                    call_start_time=call.call_start_time.isoformat(),
-                    call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
-                    duration_seconds=duration,
-                    transcript_summary=call.transcript_summary,
-                    call_duration_seconds=call.call_duration_seconds,
-                    cost=call.cost,
-                    call_successful=call.call_successful,
-                    created_at=call.created_at.isoformat(),
-                    updated_at=call.updated_at.isoformat()
-                ))
+                result.append(
+                    CallResponse(
+                        call_sid=call.call_sid,
+                        conversation_id=call.conversation_id,
+                        driver_id=call.driver_id,
+                        status=call.status.value,
+                        call_start_time=call.call_start_time.isoformat(),
+                        call_end_time=(
+                            call.call_end_time.isoformat()
+                            if call.call_end_time
+                            else None
+                        ),
+                        duration_seconds=duration,
+                        transcript_summary=call.transcript_summary,
+                        call_duration_seconds=call.call_duration_seconds,
+                        cost=call.cost,
+                        call_successful=call.call_successful,
+                        created_at=call.created_at.isoformat(),
+                        updated_at=call.updated_at.isoformat(),
+                    )
+                )
 
             return result
 
     except Exception as err:
         logger.error(f"Error fetching active calls: {str(err)}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch active calls: {str(err)}"
+            status_code=500, detail=f"Failed to fetch active calls: {str(err)}"
         )
 
 
@@ -209,7 +237,7 @@ async def get_active_calls():
 
     **Response:**
     Call record with metadata (no transcript - use /transcript endpoint)
-    """
+    """,
 )
 async def get_call_details(call_sid: str):
     """
@@ -219,10 +247,7 @@ async def get_call_details(call_sid: str):
         call = Call.get_by_call_sid(call_sid)
 
         if not call:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Call {call_sid} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Call {call_sid} not found")
 
         duration = None
         if call.call_start_time and call.call_end_time:
@@ -234,14 +259,16 @@ async def get_call_details(call_sid: str):
             driver_id=call.driver_id,
             status=call.status.value,
             call_start_time=call.call_start_time.isoformat(),
-            call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
+            call_end_time=(
+                call.call_end_time.isoformat() if call.call_end_time else None
+            ),
             duration_seconds=duration,
             transcript_summary=call.transcript_summary,
             call_duration_seconds=call.call_duration_seconds,
             cost=call.cost,
             call_successful=call.call_successful,
             created_at=call.created_at.isoformat(),
-            updated_at=call.updated_at.isoformat()
+            updated_at=call.updated_at.isoformat(),
         )
 
     except HTTPException:
@@ -249,8 +276,7 @@ async def get_call_details(call_sid: str):
     except Exception as err:
         logger.error(f"Error fetching call {call_sid}: {str(err)}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch call details: {str(err)}"
+            status_code=500, detail=f"Failed to fetch call details: {str(err)}"
         )
 
 
@@ -273,11 +299,13 @@ async def get_call_details(call_sid: str):
     **Use Case:**
     - Poll this endpoint every 2-3 seconds for real-time updates
     - Display transcript in live calls view
-    """
+    """,
 )
 async def get_call_transcript(
     call_sid: str,
-    limit: Optional[int] = Query(None, ge=1, le=1000, description="Limit number of messages")
+    limit: Optional[int] = Query(
+        None, ge=1, le=1000, description="Limit number of messages"
+    ),
 ):
     """
     Get transcript for a call.
@@ -288,10 +316,7 @@ async def get_call_transcript(
         call = Call.get_by_call_sid(call_sid)
 
         if not call:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Call {call_sid} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Call {call_sid} not found")
 
         if not call.conversation_id:
             # Call exists but no conversation_id yet (API call may have failed)
@@ -299,29 +324,33 @@ async def get_call_transcript(
 
         # Fetch transcriptions
         transcriptions = CallTranscription.get_by_conversation_id(
-            conversation_id=call.conversation_id,
-            limit=limit
+            conversation_id=call.conversation_id, limit=limit
         )
 
         # Convert to response model
         result = []
         for trans in transcriptions:
-            result.append(TranscriptMessage(
-                role="agent" if trans.speaker_type == SpeakerType.AGENT else "driver",
-                text=trans.message_text,
-                timestamp=trans.timestamp.isoformat(),
-                sequence_number=trans.sequence_number
-            ))
+            result.append(
+                TranscriptMessage(
+                    role=(
+                        "agent" if trans.speaker_type == SpeakerType.AGENT else "driver"
+                    ),
+                    text=trans.message_text,
+                    timestamp=trans.timestamp.isoformat(),
+                    sequence_number=trans.sequence_number,
+                )
+            )
 
         return result
 
     except HTTPException:
         raise
     except Exception as err:
-        logger.error(f"Error fetching transcript for {call_sid}: {str(err)}", exc_info=True)
+        logger.error(
+            f"Error fetching transcript for {call_sid}: {str(err)}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch transcript: {str(err)}"
+            status_code=500, detail=f"Failed to fetch transcript: {str(err)}"
         )
 
 
@@ -341,7 +370,7 @@ async def get_call_transcript(
     **Use Case:**
     - Fetch complete call data for display
     - Avoid making separate requests for call + transcript
-    """
+    """,
 )
 async def get_call_with_transcript(call_sid: str):
     """
@@ -352,10 +381,7 @@ async def get_call_with_transcript(call_sid: str):
         call = Call.get_by_call_sid(call_sid)
 
         if not call:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Call {call_sid} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Call {call_sid} not found")
 
         duration = None
         if call.call_start_time and call.call_end_time:
@@ -364,14 +390,22 @@ async def get_call_with_transcript(call_sid: str):
         # Fetch transcript if conversation_id exists
         transcript_messages = []
         if call.conversation_id:
-            transcriptions = CallTranscription.get_by_conversation_id(call.conversation_id)
+            transcriptions = CallTranscription.get_by_conversation_id(
+                call.conversation_id
+            )
             for trans in transcriptions:
-                transcript_messages.append(TranscriptMessage(
-                    role="agent" if trans.speaker_type == SpeakerType.AGENT else "driver",
-                    text=trans.message_text,
-                    timestamp=trans.timestamp.isoformat(),
-                    sequence_number=trans.sequence_number
-                ))
+                transcript_messages.append(
+                    TranscriptMessage(
+                        role=(
+                            "agent"
+                            if trans.speaker_type == SpeakerType.AGENT
+                            else "driver"
+                        ),
+                        text=trans.message_text,
+                        timestamp=trans.timestamp.isoformat(),
+                        sequence_number=trans.sequence_number,
+                    )
+                )
 
         return CallWithTranscriptResponse(
             call_sid=call.call_sid,
@@ -379,21 +413,24 @@ async def get_call_with_transcript(call_sid: str):
             driver_id=call.driver_id,
             status=call.status.value,
             call_start_time=call.call_start_time.isoformat(),
-            call_end_time=call.call_end_time.isoformat() if call.call_end_time else None,
+            call_end_time=(
+                call.call_end_time.isoformat() if call.call_end_time else None
+            ),
             duration_seconds=duration,
             transcript_summary=call.transcript_summary,
             call_duration_seconds=call.call_duration_seconds,
             cost=call.cost,
             call_successful=call.call_successful,
             transcript=transcript_messages,
-            transcript_count=len(transcript_messages)
+            transcript_count=len(transcript_messages),
         )
 
     except HTTPException:
         raise
     except Exception as err:
-        logger.error(f"Error fetching call with transcript {call_sid}: {str(err)}", exc_info=True)
+        logger.error(
+            f"Error fetching call with transcript {call_sid}: {str(err)}", exc_info=True
+        )
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch call with transcript: {str(err)}"
+            status_code=500, detail=f"Failed to fetch call with transcript: {str(err)}"
         )

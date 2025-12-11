@@ -54,7 +54,12 @@ class DriverTripData(SQLModel, table=True):
         with cls.get_session() as session:
             # Order by tripId descending to get the latest trip
             # You can also add .order_by(cls.lastModified.desc()) if that field exists
-            stmt = select(cls).where(cls.primaryDriverId == driver_id).order_by(cls.tripId.desc()).limit(1)
+            stmt = (
+                select(cls)
+                .where(cls.primaryDriverId == driver_id)
+                .order_by(cls.tripId.desc())
+                .limit(1)
+            )
             return session.exec(stmt).first()
 
     @classmethod
@@ -262,7 +267,7 @@ DATA_DRIVEN_VIOLATIONS = {
     "driver_stopping_200_miles",
     "driver_out_of_route",
     "trailer_check",
-    "fuel_lower_than_required"
+    "fuel_lower_than_required",
 }
 
 REMINDER_VIOLATIONS = {
@@ -271,7 +276,7 @@ REMINDER_VIOLATIONS = {
     "send_seal_pictures",
     "secure_load_pictures",
     "check_destination_bol",
-    "wait_for_approval"
+    "wait_for_approval",
 }
 
 
@@ -300,12 +305,18 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
 
         # Calculate miles driven
         miles_driven = None
-        if active_load and active_load.start_odometer_miles and active_load.current_odometer_miles:
-            miles_driven = active_load.current_odometer_miles - active_load.start_odometer_miles
+        if (
+            active_load
+            and active_load.start_odometer_miles
+            and active_load.current_odometer_miles
+        ):
+            miles_driven = (
+                active_load.current_odometer_miles - active_load.start_odometer_miles
+            )
 
         # Get location from full trip data if available
         current_location = None
-        if trip_full and hasattr(trip_full, 'samsaraLocation'):
+        if trip_full and hasattr(trip_full, "samsaraLocation"):
             current_location = trip_full.samsaraLocation
 
         return {
@@ -321,7 +332,9 @@ def get_trip_data_for_violations(trip_id: str, driver_id: str) -> Dict:
             "trl_check": driver_trip.trlCheck,
             "miles_driven": miles_driven,
             "start_odometer": active_load.start_odometer_miles if active_load else None,
-            "current_odometer": active_load.current_odometer_miles if active_load else None,
+            "current_odometer": (
+                active_load.current_odometer_miles if active_load else None
+            ),
         }
 
     except Exception as err:
@@ -343,14 +356,24 @@ def get_prompt_from_db(prompt_name: str) -> Optional[DriverPrompts]:
             # LOG: Database fetch result
             if prompt:
                 print(f"\n✅ DB FETCH SUCCESS: {prompt_name}")
-                print(f"   - TRUE Prompt: {prompt.condition_true_prompt[:80]}..." if prompt.condition_true_prompt else "   - TRUE Prompt: NULL")
-                print(f"   - FALSE Prompt: {prompt.condition_false_prompt[:80]}..." if prompt.condition_false_prompt else "   - FALSE Prompt: NULL")
+                print(
+                    f"   - TRUE Prompt: {prompt.condition_true_prompt[:80]}..."
+                    if prompt.condition_true_prompt
+                    else "   - TRUE Prompt: NULL"
+                )
+                print(
+                    f"   - FALSE Prompt: {prompt.condition_false_prompt[:80]}..."
+                    if prompt.condition_false_prompt
+                    else "   - FALSE Prompt: NULL"
+                )
             else:
                 print(f"\n❌ DB FETCH FAILED: {prompt_name} not found in database")
 
             return prompt
     except Exception as err:
-        logger.error(f"Error fetching prompt '{prompt_name}' from database: {err}", exc_info=True)
+        logger.error(
+            f"Error fetching prompt '{prompt_name}' from database: {err}", exc_info=True
+        )
         print(f"\n❌ DB FETCH ERROR: {prompt_name} - {str(err)}")
         return None
 
@@ -363,9 +386,13 @@ def map_description_to_prompt_name(description: str) -> Optional[str]:
     desc_lower = description.lower()
 
     # Map violation descriptions to prompt names
-    if "temperature" in desc_lower and ("not equal" in desc_lower or "set point" in desc_lower):
+    if "temperature" in desc_lower and (
+        "not equal" in desc_lower or "set point" in desc_lower
+    ):
         mapped_name = "temperature_not_equal"
-    elif "200 miles" in desc_lower or ("stopping" in desc_lower and "200" in desc_lower):
+    elif "200 miles" in desc_lower or (
+        "stopping" in desc_lower and "200" in desc_lower
+    ):
         mapped_name = "driver_stopping_200_miles"
     elif "out of route" in desc_lower:
         mapped_name = "driver_out_of_route"
@@ -375,7 +402,11 @@ def map_description_to_prompt_name(description: str) -> Optional[str]:
         mapped_name = "fuel_lower_than_required"
 
     # Map reminder descriptions to prompt names
-    elif "pallet" in desc_lower or "peace count" in desc_lower or "piece count" in desc_lower:
+    elif (
+        "pallet" in desc_lower
+        or "peace count" in desc_lower
+        or "piece count" in desc_lower
+    ):
         mapped_name = "verify_load_pallet_count"
     elif "loaded" in desc_lower and "picture" in desc_lower:
         mapped_name = "send_loaded_picture"
@@ -383,7 +414,9 @@ def map_description_to_prompt_name(description: str) -> Optional[str]:
         mapped_name = "send_seal_pictures"
     elif "secure" in desc_lower and ("load" in desc_lower or "cargo" in desc_lower):
         mapped_name = "secure_load_pictures"
-    elif "destination" in desc_lower and ("bol" in desc_lower or "bill" in desc_lower or "lading" in desc_lower):
+    elif "destination" in desc_lower and (
+        "bol" in desc_lower or "bill" in desc_lower or "lading" in desc_lower
+    ):
         mapped_name = "check_destination_bol"
     elif "wait" in desc_lower and "approval" in desc_lower:
         mapped_name = "wait_for_approval"
@@ -418,7 +451,9 @@ def build_reminder_prompt(violation_type: str, violation_description: str) -> st
             return prompt_record.condition_true_prompt
 
     # Fallback: use the description from the violation
-    logger.warning(f"Prompt not found in database for description: '{violation_description[:50]}...', using original description")
+    logger.warning(
+        f"Prompt not found in database for description: '{violation_description[:50]}...', using original description"
+    )
     return violation_description
 
 
@@ -439,7 +474,9 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("temperature_not_equal")
     if not prompt_record:
-        logger.warning("temperature_not_equal prompt not found in database, using fallback")
+        logger.warning(
+            "temperature_not_equal prompt not found in database, using fallback"
+        )
         # Fallback to hardcoded prompts if DB fetch fails
         if current_temp > set_point:
             return f"Your temp is at {int(current_temp)} degrees Fahrenheit but needs to be {int(set_point)} degrees Fahrenheit. What's going on with that?"
@@ -462,7 +499,9 @@ def build_out_of_route_prompt(trip_data: Dict) -> str:
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("driver_out_of_route")
     if not prompt_record:
-        logger.warning("driver_out_of_route prompt not found in database, using fallback")
+        logger.warning(
+            "driver_out_of_route prompt not found in database, using fallback"
+        )
         # Fallback to hardcoded prompts if DB fetch fails
         if location:
             return f"I see you're at {location} and showing out of route. What's the reason for the detour?"
@@ -483,7 +522,9 @@ def build_stopping_200_miles_prompt(trip_data: Dict) -> str:
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("driver_stopping_200_miles")
     if not prompt_record:
-        logger.warning("driver_stopping_200_miles prompt not found in database, using fallback")
+        logger.warning(
+            "driver_stopping_200_miles prompt not found in database, using fallback"
+        )
         # Fallback to hardcoded prompts if DB fetch fails
         if miles is not None:
             return f"I see you stopped after only {int(miles)} miles, before completing 200 miles. What's the reason for stopping early?"
@@ -511,7 +552,9 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("fuel_lower_than_required")
     if not prompt_record:
-        logger.warning("fuel_lower_than_required prompt not found in database, using fallback")
+        logger.warning(
+            "fuel_lower_than_required prompt not found in database, using fallback"
+        )
         # Fallback to hardcoded prompt if DB fetch fails
         return f"Your fuel is at {int(fuel)}%. What's your refueling plan?"
 
@@ -658,7 +701,7 @@ def generate_enhanced_conversational_prompt(
     violations: List,
     reminders: List = None,
     trip_data: Dict = None,
-    custom_rules: str = None
+    custom_rules: str = None,
 ) -> str:
     """
     Generate a complete conversational prompt with system instructions and trigger points.
@@ -682,7 +725,7 @@ def generate_enhanced_conversational_prompt(
         "send_seal_pictures",
         "secure_load_pictures",
         "check_destination_bol",
-        "wait_for_approval"
+        "wait_for_approval",
     }
 
     # Process ONLY the violations sent from frontend
@@ -723,8 +766,12 @@ def generate_enhanced_conversational_prompt(
 
             # If we have a prompt_name but no trip_data, use condition_false_prompt
             elif prompt_name and not trip_data:
-                logger.warning(f"No trip_data available for {prompt_name}, using condition_false_prompt")
-                print(f"   ⚠️  No trip data - fetching FALSE condition prompt for: {prompt_name}")
+                logger.warning(
+                    f"No trip_data available for {prompt_name}, using condition_false_prompt"
+                )
+                print(
+                    f"   ⚠️  No trip data - fetching FALSE condition prompt for: {prompt_name}"
+                )
 
                 prompt_record = get_prompt_from_db(prompt_name)
                 if prompt_record and prompt_record.condition_false_prompt:
@@ -762,7 +809,7 @@ def generate_enhanced_conversational_prompt(
         f"Driver Name: {driver_name}",
         f"First Name: {first_name}",
         "",
-        "=== POINTS TO DISCUSS (ONE AT A TIME) ==="
+        "=== POINTS TO DISCUSS (ONE AT A TIME) ===",
     ]
 
     # Add numbered points
@@ -814,21 +861,46 @@ def categorize_violations(violations: List) -> tuple:
 
     # Keywords that indicate data-driven violations
     data_driven_keywords = [
-        "temperature", "temp", "set point", "setpoint",
-        "out of route", "route", "off route",
-        "200 miles", "stopping", "stop",
-        "fuel", "gas",
-        "trailer", "trl", "trailer check"
+        "temperature",
+        "temp",
+        "set point",
+        "setpoint",
+        "out of route",
+        "route",
+        "off route",
+        "200 miles",
+        "stopping",
+        "stop",
+        "fuel",
+        "gas",
+        "trailer",
+        "trl",
+        "trailer check",
     ]
 
     # Keywords that indicate reminders
     reminder_keywords = [
-        "reminder", "remind", "make sure", "verify", "check",
-        "picture", "photo", "image", "send",
-        "load", "pallet", "piece count",
-        "seal", "secured", "secure",
-        "destination", "bol", "bill of lading",
-        "approval", "wait", "permission"
+        "reminder",
+        "remind",
+        "make sure",
+        "verify",
+        "check",
+        "picture",
+        "photo",
+        "image",
+        "send",
+        "load",
+        "pallet",
+        "piece count",
+        "seal",
+        "secured",
+        "secure",
+        "destination",
+        "bol",
+        "bill of lading",
+        "approval",
+        "wait",
+        "permission",
     ]
 
     for violation in violations:
@@ -854,7 +926,9 @@ def categorize_violations(violations: List) -> tuple:
 # -------------------------------
 # MAKE VAPI MULTIPLE CALLS - BATCH CALL (OLD)
 # -------------------------------
-def generate_conversational_prompt(driver_name: str, violations: List, custom_rules: str = "") -> str:
+def generate_conversational_prompt(
+    driver_name: str, violations: List, custom_rules: str = ""
+) -> str:
     """
     Generate a natural, conversational prompt under 250 characters.
     Includes random greetings, transitions, and natural language elements.
@@ -871,7 +945,12 @@ def generate_conversational_prompt(driver_name: str, violations: List, custom_ru
     ]
 
     # Random transitions
-    transitions = ["Umm, I noticed", "So, checking the data", "Hmm, I see", "Alright, so"]
+    transitions = [
+        "Umm, I noticed",
+        "So, checking the data",
+        "Hmm, I see",
+        "Alright, so",
+    ]
 
     # Random closings
     closings = ["Got a sec?", "Can we chat?", "Let's talk.", "Quick call?"]
@@ -927,7 +1006,9 @@ async def generate_prompt_for_driver(request):
     try:
         from models.vapi import GeneratePromptRequest
 
-        logger.info(f"📝 Generating prompt for driver: {request.driverName} ({request.driverId})")
+        logger.info(
+            f"📝 Generating prompt for driver: {request.driverName} ({request.driverId})"
+        )
 
         # Fetch the latest trip by driverId
         logger.info(f"🔍 Fetching latest trip for driver: {request.driverId}")
@@ -942,15 +1023,19 @@ async def generate_prompt_for_driver(request):
 
         # Fetch trip data for generating personalized prompts
         trip_data = get_trip_data_for_violations(
-            trip_id=trip_id or "",
-            driver_id=request.driverId
+            trip_id=trip_id or "", driver_id=request.driverId
         )
 
         # Generate prompt using the triggers from request
         # Convert triggers to ViolationDetail objects format for the function
         from models.vapi import ViolationDetail
+
         violation_details = [
-            type('obj', (object,), {'type': trigger.type, 'description': trigger.description})()
+            type(
+                "obj",
+                (object,),
+                {"type": trigger.type, "description": trigger.description},
+            )()
             for trigger in request.triggers
         ]
 
@@ -959,14 +1044,18 @@ async def generate_prompt_for_driver(request):
             violations=violation_details,
             reminders=[],
             trip_data=trip_data,
-            custom_rules=request.customRules
+            custom_rules=request.customRules,
         )
 
         logger.info(f"✅ Prompt generated successfully for {request.driverName}")
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, request.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = (
+            f"+1{phone_digits}"
+            if not phone_digits.startswith("1")
+            else f"+{phone_digits}"
+        )
 
         return {
             "message": "Prompt generated successfully",
@@ -983,11 +1072,11 @@ async def generate_prompt_for_driver(request):
 
     except Exception as err:
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error generating prompt: {err}", exc_info=True)
         raise HTTPException(
-            status_code=500,
-            detail=f"Prompt generation error: {str(err)}"
+            status_code=500, detail=f"Prompt generation error: {str(err)}"
         )
 
 
@@ -1006,27 +1095,37 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         print(f"Timestamp: {request.timestamp}")
         print(f"Number of Drivers: {len(request.drivers)}")
         import json
+
         print("\nFull Payload JSON:")
-        print(json.dumps({
-            "callType": request.callType,
-            "timestamp": request.timestamp,
-            "drivers": [
+        print(
+            json.dumps(
                 {
-                    "driverId": d.driverId,
-                    "driverName": d.driverName,
-                    "phoneNumber": d.phoneNumber,
-                    "customRules": d.customRules,
-                    "violations": {
-                        "tripId": d.violations.tripId if d.violations else None,
-                        "violationDetails": [
-                            {"type": v.type, "description": v.description}
-                            for v in (d.violations.violationDetails if d.violations else [])
-                        ]
-                    }
-                }
-                for d in request.drivers
-            ]
-        }, indent=2))
+                    "callType": request.callType,
+                    "timestamp": request.timestamp,
+                    "drivers": [
+                        {
+                            "driverId": d.driverId,
+                            "driverName": d.driverName,
+                            "phoneNumber": d.phoneNumber,
+                            "customRules": d.customRules,
+                            "violations": {
+                                "tripId": d.violations.tripId if d.violations else None,
+                                "violationDetails": [
+                                    {"type": v.type, "description": v.description}
+                                    for v in (
+                                        d.violations.violationDetails
+                                        if d.violations
+                                        else []
+                                    )
+                                ],
+                            },
+                        }
+                        for d in request.drivers
+                    ],
+                },
+                indent=2,
+            )
+        )
         print("=" * 100 + "\n")
 
         # Get the first (and only) driver from the array
@@ -1035,18 +1134,21 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
 
         driver = request.drivers[0]  # Only one driver per call
 
-        logger.info(f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})")
+        logger.info(
+            f"📞 Processing call for driver: {driver.driverName} ({driver.driverId})"
+        )
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = (
+            f"+1{phone_digits}"
+            if not phone_digits.startswith("1")
+            else f"+{phone_digits}"
+        )
 
         # Convert violations to a simple list format for the webhook
         triggers = [
-            {
-                "type": violation.type,
-                "description": violation.description
-            }
+            {"type": violation.type, "description": violation.description}
             for violation in driver.violations.violationDetails
         ]
 
@@ -1056,7 +1158,7 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
             "driverId": driver.driverId,
             "driverName": driver.driverName,
             "triggers": triggers,
-            "customRules": driver.customRules
+            "customRules": driver.customRules,
         }
 
         # Print webhook payload for debugging
@@ -1065,20 +1167,26 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
         print("_" * 80)
         print(webhook_payload)
         print("_" * 80 + "\n")
-        
+
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 "https://vapi-ringcentral-bridge-181509438418.us-central1.run.app/api/webhook/call-driver-elevenlabs",
                 json=webhook_payload,
-                headers={"Content-Type": "application/json"}
+                headers={"Content-Type": "application/json"},
             )
             response.raise_for_status()
             webhook_response = response.json()
 
-            print("------------------------------------------------------------------------------------------")
-            print("------------------------------------------------------------------------------------------")
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
             print("WEBHOOK RESPONSE")
-            print("------------------------------------------------------------------------------------------")
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
             print(webhook_response)
 
         logger.info(f"✅ Call initiated successfully for {driver.driverName}")
@@ -1092,19 +1200,17 @@ async def make_drivers_violation_batch_call(request: BatchCallRequest):
                 "phoneNumber": normalized_phone,
             },
             "triggers_count": len(triggers),
-            "webhook_response": webhook_response
+            "webhook_response": webhook_response,
         }
 
     except HTTPException:
         raise
     except Exception as err:
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error making driver call: {err}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Call error: {str(err)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")
 
 
 async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest):
@@ -1126,10 +1232,14 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
     Raises:
         HTTPException: 400 if no driver data provided, 500 if call creation fails
     """
+    print("--------------------- AMIN FUNCTIOM  -------------------")
     try:
         # Import required dependencies
         import json
+
         from utils.elevenlabs_client import elevenlabs_client
+
+        print("--------------------- CLIENT  -------------------")
 
         # LOG 1: Print full incoming payload
         print("\n" + "=" * 100)
@@ -1139,26 +1249,35 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         print(f"Timestamp: {request.timestamp}")
         print(f"Number of Drivers: {len(request.drivers)}")
         print("\nFull Payload JSON:")
-        print(json.dumps({
-            "callType": request.callType,
-            "timestamp": request.timestamp,
-            "drivers": [
+        print(
+            json.dumps(
                 {
-                    "driverId": d.driverId,
-                    "driverName": d.driverName,
-                    "phoneNumber": d.phoneNumber,
-                    "customRules": d.customRules,
-                    "violations": {
-                        "tripId": d.violations.tripId if d.violations else None,
-                        "violationDetails": [
-                            {"type": v.type, "description": v.description}
-                            for v in (d.violations.violationDetails if d.violations else [])
-                        ]
-                    }
-                }
-                for d in request.drivers
-            ]
-        }, indent=2))
+                    "callType": request.callType,
+                    "timestamp": request.timestamp,
+                    "drivers": [
+                        {
+                            "driverId": d.driverId,
+                            "driverName": d.driverName,
+                            "phoneNumber": d.phoneNumber,
+                            "customRules": d.customRules,
+                            "violations": {
+                                "tripId": d.violations.tripId if d.violations else None,
+                                "violationDetails": [
+                                    {"type": v.type, "description": v.description}
+                                    for v in (
+                                        d.violations.violationDetails
+                                        if d.violations
+                                        else []
+                                    )
+                                ],
+                            },
+                        }
+                        for d in request.drivers
+                    ],
+                },
+                indent=2,
+            )
+        )
         print("=" * 100 + "\n")
 
         # Get the first (and only) driver from the array
@@ -1167,11 +1286,17 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
 
         driver = request.drivers[0]  # Only one driver per call
 
-        logger.info(f"Processing ElevenLabs call for driver: {driver.driverName} ({driver.driverId})")
+        logger.info(
+            f"Processing ElevenLabs call for driver: {driver.driverName} ({driver.driverId})"
+        )
 
         # Normalize phone number to E.164 format
         phone_digits = "".join(filter(str.isdigit, driver.phoneNumber))
-        normalized_phone = f"+1{phone_digits}" if not phone_digits.startswith("1") else f"+{phone_digits}"
+        normalized_phone = (
+            f"+1{phone_digits}"
+            if not phone_digits.startswith("1")
+            else f"+{phone_digits}"
+        )
 
         print("\n" + "=" * 100)
         print("PHONE NUMBER NORMALIZATION")
@@ -1186,8 +1311,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         # Fetch trip data for generating personalized prompts
         trip_id = driver.violations.tripId if driver.violations else None
         trip_data = get_trip_data_for_violations(
-            trip_id=trip_id or "",
-            driver_id=driver.driverId
+            trip_id=trip_id or "", driver_id=driver.driverId
         )
 
         # Convert violations to format expected by prompt generation function
@@ -1195,10 +1319,11 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         if driver.violations and driver.violations.violationDetails:
             for v in driver.violations.violationDetails:
                 # Create simple object with type and description attributes
-                violation_obj = type('ViolationObj', (object,), {
-                    'type': v.type,
-                    'description': v.description
-                })()
+                violation_obj = type(
+                    "ViolationObj",
+                    (object,),
+                    {"type": v.type, "description": v.description},
+                )()
                 violation_details.append(violation_obj)
 
         # Generate the prompt
@@ -1207,10 +1332,12 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
             violations=violation_details,
             reminders=[],
             trip_data=trip_data,
-            custom_rules=driver.customRules
+            custom_rules=driver.customRules,
         )
 
-        logger.info(f"Prompt generated successfully - Length: {len(prompt_text)} characters")
+        logger.info(
+            f"Prompt generated successfully - Length: {len(prompt_text)} characters"
+        )
 
         print("\n" + "=" * 100)
         print("GENERATED PROMPT")
@@ -1223,7 +1350,9 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         # Call ElevenLabs client with generated data
         # For now, use hardcoded defaults for optional parameters
         transfer_to = "+18005551234"  # Default transfer number
-        call_sid = f"EL_{driver.driverId}_{request.timestamp}"  # Generate unique call SID
+        call_sid = (
+            f"EL_{driver.driverId}_{request.timestamp}"  # Generate unique call SID
+        )
         dispatcher_name = "AGY Dispatcher"  # Default dispatcher name
 
         # STEP 1: Create Call record BEFORE calling ElevenLabs
@@ -1235,21 +1364,37 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         from models.call import Call, CallStatus
         from datetime import datetime, timezone
 
+        print("--------------------- CALL RECORD IS CREATING MAIN -------------------")
         try:
+            # Get trip_id - prefer from violations, then from request, handle empty strings
+            final_trip_id = None
+            if driver.violations and driver.violations.tripId and driver.violations.tripId.strip():
+                final_trip_id = driver.violations.tripId.strip()
+            elif request.trip_id and request.trip_id.strip():
+                final_trip_id = request.trip_id.strip()
+
+            logger.info(f"Using trip_id: {final_trip_id} for call record")
+
             call_record = Call.create_call_with_call_sid(
                 call_sid=call_sid,
                 driver_id=driver.driverId,
                 call_start_time=datetime.now(timezone.utc),
-                status=CallStatus.IN_PROGRESS
+                trip_id=final_trip_id,  # Can be None if no trip found
+                status=CallStatus.IN_PROGRESS,
             )
-            logger.info(f"Call record created successfully - ID: {call_record.id}, call_sid: {call_sid}")
-            logger.info(f"Call record has conversation_id=NULL (will be updated after ElevenLabs responds)")
+            logger.info(
+                f"Call record created successfully - ID: {call_record.id}, call_sid: {call_sid}"
+            )
+            logger.info(
+                f"Call record has conversation_id=NULL (will be updated after ElevenLabs responds)"
+            )
+            print("CALL RECORD IS CREATING END")
 
         except Exception as db_err:
             logger.error(f"Failed to create Call record: {str(db_err)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create call record in database: {str(db_err)}"
+                detail=f"Failed to create call record in database: {str(db_err)}",
             )
 
         logger.info("=" * 100)
@@ -1265,39 +1410,48 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 transfer_to=transfer_to,
                 call_sid=call_sid,
                 dispatcher_name=dispatcher_name,
-                driver_id=driver.driverId
+                driver_id=driver.driverId,
             )
 
-            logger.info(f"ElevenLabs call initiated successfully - Conversation ID: {elevenlabs_response.get('conversation_id')}")
+            logger.info(
+                f"ElevenLabs call initiated successfully - Conversation ID: {elevenlabs_response.get('conversation_id')}"
+            )
 
             # STEP 3: Update Call record with conversation_id from ElevenLabs
             try:
                 Call.update_conversation_id(
                     call_sid=call_sid,
-                    conversation_id=elevenlabs_response.get("conversation_id")
+                    conversation_id=elevenlabs_response.get("conversation_id"),
                 )
-                logger.info(f"Updated Call record with conversation_id: {elevenlabs_response.get('conversation_id')}")
+                logger.info(
+                    f"Updated Call record with conversation_id: {elevenlabs_response.get('conversation_id')}"
+                )
 
             except Exception as update_err:
-                logger.error(f"Failed to update Call with conversation_id: {str(update_err)}", exc_info=True)
+                logger.error(
+                    f"Failed to update Call with conversation_id: {str(update_err)}",
+                    exc_info=True,
+                )
                 # Don't fail the request - Call record exists, webhook can still work with call_sid
-
 
         except Exception as client_err:
             # Update Call status to FAILED since ElevenLabs API call failed
             try:
                 Call.update_status_by_call_sid(
-                    call_sid=call_sid,
-                    status=CallStatus.FAILED
+                    call_sid=call_sid, status=CallStatus.FAILED
                 )
-                logger.info(f"Updated Call record status to FAILED for call_sid: {call_sid}")
+                logger.info(
+                    f"Updated Call record status to FAILED for call_sid: {call_sid}"
+                )
             except Exception as status_err:
-                logger.error(f"Failed to update Call status: {str(status_err)}", exc_info=True)
+                logger.error(
+                    f"Failed to update Call status: {str(status_err)}", exc_info=True
+                )
 
             logger.error(f"ElevenLabs client error: {str(client_err)}", exc_info=True)
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to initiate ElevenLabs call: {str(client_err)}"
+                detail=f"Failed to initiate ElevenLabs call: {str(client_err)}",
             )
 
         # Build and return success response
@@ -1323,12 +1477,10 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
     except Exception as err:
         # Log error with full traceback
         import traceback
+
         error_details = traceback.format_exc()
         logger.error(f"Error making ElevenLabs driver call: {err}", exc_info=True)
         logger.error(f"Full traceback:\n{error_details}")
 
         # Raise user-friendly error
-        raise HTTPException(
-            status_code=500,
-            detail=f"Call error: {str(err)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Call error: {str(err)}")

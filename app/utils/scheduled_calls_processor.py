@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from db import engine
 from models.driver_sheduled_calls import DriverSheduledCalls
 from models.drivers import Driver
+from models.trips import Trip
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -52,8 +53,7 @@ class ScheduledCallsProcessor:
         with Session(engine) as session:
             # Search by firstName and lastName
             statement = select(Driver).where(
-                Driver.firstName == first_name,
-                Driver.lastName == last_name
+                Driver.firstName == first_name, Driver.lastName == last_name
             )
             result = session.exec(statement).first()
 
@@ -63,51 +63,87 @@ class ScheduledCallsProcessor:
             # Fallback: try searching by driverId in case it's actually an ID
             return Driver.get_by_id(driver_name)
 
-    def build_payload(self, scheduled_call: DriverSheduledCalls, driver: Driver) -> dict:
+    def get_active_trip_for_driver(self, driver_id: str) -> Optional[Trip]:
+        """
+        Get the active trip for a driver by checking substatus.
+
+        Active substatus values:
+        - 'en route to pickup', 'en route to pick up', 'loading',
+        - 'en route to delivery', 'en route to waypoint', 'unloading'
+
+        Returns the active trip or None if no active trip found.
+        """
+        try:
+            active_trip = Trip.get_active_trip_by_driver_id(driver_id)
+            if active_trip:
+                logger.info(
+                    f"[SCHEDULER] Found active trip {active_trip.tripId} for driver {driver_id} "
+                    f"with substatus: {active_trip.subStatusLabel}"
+                )
+            else:
+                logger.info(f"[SCHEDULER] No active trip found for driver {driver_id}")
+            return active_trip
+        except Exception as e:
+            logger.error(
+                f"[SCHEDULER] Error getting active trip for driver {driver_id}: {str(e)}",
+                exc_info=True,
+            )
+            return None
+
+    def build_payload(
+        self, scheduled_call: DriverSheduledCalls, driver: Driver, trip_id: Optional[str] = None
+    ) -> dict:
         """
         Build the API payload for the call-elevenlabs endpoint.
 
         Maps violations and reminders to violationDetails with appropriate types.
+        Includes trip_id and custom_rules in the payload.
         """
         violation_details = []
 
         # Process violations (comma-separated string)
         if scheduled_call.violation:
-            violations = [v.strip() for v in scheduled_call.violation.split(",") if v.strip()]
+            violations = [
+                v.strip() for v in scheduled_call.violation.split(",") if v.strip()
+            ]
             for v in violations:
-                violation_details.append({
-                    "type": "VIOLATION",
-                    "description": v
-                })
+                violation_details.append({"type": "VIOLATION", "description": v})
 
         # Process reminders (comma-separated string)
         if scheduled_call.reminder:
-            reminders = [r.strip() for r in scheduled_call.reminder.split(",") if r.strip()]
+            reminders = [
+                r.strip() for r in scheduled_call.reminder.split(",") if r.strip()
+            ]
             for r in reminders:
-                violation_details.append({
-                    "type": "REMINDER",
-                    "description": r
-                })
+                violation_details.append({"type": "REMINDER", "description": r})
 
         # Build driver name
         driver_name = f"{driver.firstName or ''} {driver.lastName or ''}".strip()
         if not driver_name:
             driver_name = driver.driverId
 
+        # Get custom rules from scheduled call
+        custom_rules = scheduled_call.custom_rule or ""
+
         payload = {
             "callType": "violation",
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "drivers": [{
-                "driverId": driver.driverId,
-                "driverName": driver_name,
-                "phoneNumber": driver.phoneNumber or "",
-                "customRules": "",
-                "violations": {
-                    "tripId": "",
-                    "violationDetails": violation_details
+            "trip_id": trip_id or "",  # Pass trip_id at root level
+            "drivers": [
+                {
+                    "driverId": driver.driverId,
+                    "driverName": driver_name,
+                    "phoneNumber": driver.phoneNumber or "",
+                    "customRules": custom_rules,  # Pass custom rules
+                    "violations": {"tripId": trip_id or "", "violationDetails": violation_details},
                 }
-            }]
+            ],
         }
+
+        logger.info(
+            f"[SCHEDULER] Built payload for driver {driver.driverId} with trip_id: {trip_id}, "
+            f"custom_rules: {custom_rules[:50] if custom_rules else 'None'}..."
+        )
 
         return payload
 
@@ -123,10 +159,14 @@ class ScheduledCallsProcessor:
                 response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
-                    logger.info(f"[SCHEDULER] Successfully triggered call for driver {payload['drivers'][0]['driverId']}")
+                    logger.info(
+                        f"[SCHEDULER] Successfully triggered call for driver {payload['drivers'][0]['driverId']}"
+                    )
                     return True
                 else:
-                    logger.error(f"[SCHEDULER] Failed to trigger call. Status: {response.status_code}, Response: {response.text}")
+                    logger.error(
+                        f"[SCHEDULER] Failed to trigger call. Status: {response.status_code}, Response: {response.text}"
+                    )
                     return False
 
         except Exception as e:
@@ -153,30 +193,58 @@ class ScheduledCallsProcessor:
 
             for scheduled_call in due_calls:
                 try:
-                    logger.info(f"[SCHEDULER] Processing scheduled call {scheduled_call.id} for driver {scheduled_call.driver}")
+                    logger.info(
+                        f"[SCHEDULER] Processing scheduled call {scheduled_call.id} for driver {scheduled_call.driver}"
+                    )
 
                     # Get driver information
                     driver = self.get_driver_info(scheduled_call.driver)
 
                     if not driver:
-                        logger.warning(f"[SCHEDULER] Driver not found: {scheduled_call.driver}. Skipping call.")
+                        logger.warning(
+                            f"[SCHEDULER] Driver not found: {scheduled_call.driver}. Skipping call."
+                        )
                         # Still delete the record to avoid repeated attempts
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
                     if not driver.phoneNumber:
-                        logger.warning(f"[SCHEDULER] Driver {scheduled_call.driver} has no phone number. Skipping call.")
+                        logger.warning(
+                            f"[SCHEDULER] Driver {scheduled_call.driver} has no phone number. Skipping call."
+                        )
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
 
-                    # Build payload
-                    payload = self.build_payload(scheduled_call, driver)
+                    # Get active trip for the driver (filter by substatus)
+                    active_trip = self.get_active_trip_for_driver(driver.driverId)
+                    trip_id = active_trip.tripId if active_trip else None
 
-                    # Check if there are any violation details
-                    if not payload["drivers"][0]["violations"]["violationDetails"]:
-                        logger.warning(f"[SCHEDULER] No violations or reminders for scheduled call {scheduled_call.id}. Skipping.")
+                    if trip_id:
+                        logger.info(
+                            f"[SCHEDULER] Using active trip {trip_id} for driver {driver.driverId}"
+                        )
+                    else:
+                        logger.info(
+                            f"[SCHEDULER] No active trip found for driver {driver.driverId}, proceeding without trip_id"
+                        )
+
+                    # Build payload with trip_id and custom_rules
+                    payload = self.build_payload(scheduled_call, driver, trip_id)
+
+                    # Check if there's anything to say - either violations/reminders OR custom_rule
+                    has_violation_details = bool(payload["drivers"][0]["violations"]["violationDetails"])
+                    has_custom_rules = bool(payload["drivers"][0].get("customRules", "").strip())
+
+                    if not has_violation_details and not has_custom_rules:
+                        logger.warning(
+                            f"[SCHEDULER] No violations, reminders, or custom rules for scheduled call {scheduled_call.id}. Skipping."
+                        )
                         self.delete_scheduled_call(scheduled_call.id)
                         continue
+
+                    logger.info(
+                        f"[SCHEDULER] Payload has violationDetails: {has_violation_details}, customRules: {has_custom_rules}"
+                    )
 
                     # Trigger the call
                     success = await self.trigger_call(payload)
@@ -185,19 +253,30 @@ class ScheduledCallsProcessor:
                         # Delete the record after successful call
                         deleted = self.delete_scheduled_call(scheduled_call.id)
                         if deleted:
-                            logger.info(f"[SCHEDULER] Successfully processed and deleted scheduled call {scheduled_call.id}")
+                            logger.info(
+                                f"[SCHEDULER] Successfully processed and deleted scheduled call {scheduled_call.id}"
+                            )
                         else:
-                            logger.warning(f"[SCHEDULER] Call triggered but failed to delete record {scheduled_call.id}")
+                            logger.warning(
+                                f"[SCHEDULER] Call triggered but failed to delete record {scheduled_call.id}"
+                            )
                     else:
-                        logger.error(f"[SCHEDULER] Failed to trigger call for scheduled call {scheduled_call.id}")
+                        logger.error(
+                            f"[SCHEDULER] Failed to trigger call for scheduled call {scheduled_call.id}"
+                        )
                         # Don't delete - will retry on next run
 
                 except Exception as e:
-                    logger.error(f"[SCHEDULER] Error processing scheduled call {scheduled_call.id}: {str(e)}", exc_info=True)
+                    logger.error(
+                        f"[SCHEDULER] Error processing scheduled call {scheduled_call.id}: {str(e)}",
+                        exc_info=True,
+                    )
                     continue
 
         except Exception as e:
-            logger.error(f"[SCHEDULER] Error in process_due_calls: {str(e)}", exc_info=True)
+            logger.error(
+                f"[SCHEDULER] Error in process_due_calls: {str(e)}", exc_info=True
+            )
 
         logger.info("[SCHEDULER] Completed scheduled calls processing")
 
