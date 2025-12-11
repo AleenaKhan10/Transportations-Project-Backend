@@ -184,9 +184,16 @@ async def update_user_permissions(
             )
 
         pages = permissions_data.get("pages", [])
+        actions = permissions_data.get("actions", [])
         if not isinstance(pages, list):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Pages must be an array"
+            )
+
+        if not isinstance(actions, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Actions must be an array",
             )
 
         # Store old permissions for audit
@@ -194,6 +201,7 @@ async def update_user_permissions(
 
         # Update allowed pages
         user.allowed_pages = pages
+        user.allowed_actions = actions
         user.updated_at = datetime.utcnow()
         session.add(user)
         session.commit()
@@ -215,6 +223,7 @@ async def update_user_permissions(
             "success": True,
             "message": "User permissions updated successfully",
             "allowed_pages": pages,
+            "allowed_actions": actions,
         }
 
 
