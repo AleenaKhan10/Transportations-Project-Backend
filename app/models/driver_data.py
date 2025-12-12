@@ -6,8 +6,11 @@ from utils.vapi_client import vapi_client
 from models.vapi import BatchCallRequest
 from config import settings
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, Depends
 from models.driver_model_prompt import DriverPrompts
+from logic.auth.service import UserService, AuditService
+from logic.auth.security import get_current_active_user
+from models.user import User, UserUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -1234,7 +1237,22 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
     """
     print("--------------------- AMIN FUNCTIOM  -------------------")
     try:
+
         # Import required dependencies
+        print("--------------------- CREATE LOGS  -------------------")
+        AuditService.log_business_event(
+            user_id=123,
+            action="user_make_call",
+            resource="call",
+            resource_id=1234,
+            new_values={
+                "username": "ibrar",
+                "reason": "batch call",
+                "user_status": "calling",
+            },
+        )
+        print("--------------------- CREATE LOGS ENDS  -------------------")
+        return
         import json
 
         from utils.elevenlabs_client import elevenlabs_client
@@ -1368,7 +1386,11 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         try:
             # Get trip_id - prefer from violations, then from request, handle empty strings
             final_trip_id = None
-            if driver.violations and driver.violations.tripId and driver.violations.tripId.strip():
+            if (
+                driver.violations
+                and driver.violations.tripId
+                and driver.violations.tripId.strip()
+            ):
                 final_trip_id = driver.violations.tripId.strip()
             elif request.trip_id and request.trip_id.strip():
                 final_trip_id = request.trip_id.strip()
