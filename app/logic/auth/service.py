@@ -490,11 +490,13 @@ class AuditService:
     ):
         """Log meaningful business events, not API requests"""
         with Session(engine) as session:
+            print("------------- USER ID ---------")
             user_email = None
             if user_id:
                 user = session.get(User, user_id)
                 if user:
                     user_email = user.email or user.username
+            print("------------- USER ID ---  ---------", user_id)
 
             # Only log meaningful business events
             print("------------- ACTIONS ---------")

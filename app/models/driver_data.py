@@ -1239,20 +1239,21 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
     try:
 
         # Import required dependencies
-        print("--------------------- CREATE LOGS  -------------------")
-        AuditService.log_business_event(
-            user_id=123,
-            action="user_make_call",
-            resource="call",
-            resource_id=1234,
-            new_values={
-                "username": "ibrar",
-                "reason": "batch call",
-                "user_status": "calling",
-            },
-        )
-        print("--------------------- CREATE LOGS ENDS  -------------------")
-        return
+        # print("--------------------- CREATE LOGS  -------------------")
+        # AuditService.log_business_event(
+        #     user_id=request.user_id,
+        #     action="user_make_call",
+        #     resource="call",
+        #     resource_id=1234,
+        #     new_values={
+        #         "username": "ibrar",
+        #         "reason": "batch call",
+        #         "user_status": "calling",
+        #     },
+        # )
+        # print("--------------------- CREATE LOGS ENDS  -------------------")
+        # return
+
         import json
 
         from utils.elevenlabs_client import elevenlabs_client
@@ -1478,6 +1479,30 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
 
         # Build and return success response
         logger.info(f"Call initiated successfully for {driver.driverName}")
+
+        # Audit Logs
+        AuditService.log_business_event(
+            user_id=request.user_id,
+            action="user_make_call",
+            resource="call",
+            # resource_id=driver.driverId,
+            new_values={
+                "message": "Call initiated successfully via ElevenLabs",
+                "timestamp": request.timestamp,
+                "call_type": request.callType,
+                "driverId": driver.driverId,
+                "driverName": driver.driverName,
+                "phoneNumber": normalized_phone,
+                "customRule": driver.customRules,
+                "tripId": driver.violations.tripId,
+                # "violationDetails": driver.violations.violationDetails,
+                "call_sid": call_sid,
+                "conversation_id": elevenlabs_response.get("conversation_id"),
+                "callSid": elevenlabs_response.get("callSid"),
+                "triggers_count": len(violation_details),
+                # "prompt": prompt_text,
+            },
+        )
 
         return {
             "message": "Call initiated successfully via ElevenLabs",

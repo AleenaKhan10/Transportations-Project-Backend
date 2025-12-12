@@ -27,7 +27,10 @@ class BatchCallRequest(BaseModel):
     callType: str
     timestamp: str
     drivers: List[DriverData]
-    trip_id: Optional[str] = None  # Optional - will be fetched automatically from driver's active trip
+    trip_id: Optional[str] = (
+        None  # Optional - will be fetched automatically from driver's active trip
+    )
+    user_id: int
 
 
 # --- Request Schema CLOSE ---
