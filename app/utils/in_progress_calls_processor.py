@@ -260,7 +260,8 @@ class InProgressCallsProcessor:
         if call.retry_count < call.max_retries:
             # Schedule retry
             next_retry_count = call.retry_count + 1
-            delay_minutes = get_retry_delay_minutes(call.retry_count)
+            # Always schedule retry 10 minutes from now
+            delay_minutes = 10
             next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
 
             logger.info(

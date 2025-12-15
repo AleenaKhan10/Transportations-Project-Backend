@@ -353,9 +353,8 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
 
             # Check if retries are available
             if call.retry_count < call.max_retries:
-                # Calculate retry time (10, 30, 60 minutes based on retry count)
-                retry_delays = [10, 30, 60]
-                delay_minutes = retry_delays[min(call.retry_count, len(retry_delays) - 1)]
+                # Always schedule retry 10 minutes from now
+                delay_minutes = 10
                 next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
                 next_retry_count = call.retry_count + 1
 
