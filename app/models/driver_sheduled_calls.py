@@ -165,6 +165,37 @@ class DriverSheduledCalls(SQLModel, table=True):
             return record
 
     # ---------------------------------------------------------------------
+    # CHECK FOR EXISTING PENDING RETRY
+    # ---------------------------------------------------------------------
+    @classmethod
+    def has_pending_retry_for_call(cls, parent_call_sid: str) -> bool:
+        """
+        Check if a pending retry schedule already exists for a given call.
+
+        Args:
+            parent_call_sid: The original call's call_sid
+
+        Returns:
+            True if a pending retry exists, False otherwise
+        """
+        if not parent_call_sid:
+            return False
+
+        with cls.get_session() as session:
+            statement = select(cls).where(
+                cls.parent_call_sid == parent_call_sid
+            )
+            result = session.exec(statement).first()
+
+            if result:
+                logger.info(
+                    f"Found existing retry schedule for parent_call_sid={parent_call_sid}, "
+                    f"schedule_id={result.id}, status={'ACTIVE' if result.status else 'PENDING'}"
+                )
+                return True
+            return False
+
+    # ---------------------------------------------------------------------
     # CREATE SINGLE RETRY SCHEDULE
     # ---------------------------------------------------------------------
     @classmethod

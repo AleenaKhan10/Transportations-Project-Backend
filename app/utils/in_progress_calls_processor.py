@@ -324,6 +324,14 @@ class InProgressCallsProcessor:
             )
             return
 
+        # Check if a retry schedule already exists for this call
+        if DriverSheduledCalls.has_pending_retry_for_call(call.call_sid):
+            logger.info(
+                f"[IN_PROGRESS_PROCESSOR] Retry schedule already exists for call {call.call_sid}, "
+                "skipping duplicate creation"
+            )
+            return
+
         # Parse violations and reminders from JSON
         violation_str = None
         reminder_str = None

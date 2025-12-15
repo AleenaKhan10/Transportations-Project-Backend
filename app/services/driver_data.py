@@ -381,42 +381,48 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
                 driver_identifier = call.driver_name or call.driver_id
 
                 if driver_identifier and (call.violations_json or call.reminders_json or call.custom_rules):
-                    # Parse violations/reminders from JSON to comma-separated strings
-                    violation_str = None
-                    reminder_str = None
+                    # Check if a retry schedule already exists for this call
+                    if DriverSheduledCalls.has_pending_retry_for_call(call.call_sid):
+                        logger.info(
+                            f"[RETRY] Retry schedule already exists for call {call.call_sid}, skipping duplicate creation"
+                        )
+                    else:
+                        # Parse violations/reminders from JSON to comma-separated strings
+                        violation_str = None
+                        reminder_str = None
 
-                    if call.violations_json:
-                        try:
-                            violations = json.loads(call.violations_json)
-                            violation_str = ", ".join(
-                                v.get("description", "") for v in violations if v.get("description")
-                            )
-                        except json.JSONDecodeError:
-                            pass
+                        if call.violations_json:
+                            try:
+                                violations = json.loads(call.violations_json)
+                                violation_str = ", ".join(
+                                    v.get("description", "") for v in violations if v.get("description")
+                                )
+                            except json.JSONDecodeError:
+                                pass
 
-                    if call.reminders_json:
-                        try:
-                            reminders = json.loads(call.reminders_json)
-                            reminder_str = ", ".join(
-                                r.get("description", "") for r in reminders if r.get("description")
-                            )
-                        except json.JSONDecodeError:
-                            pass
+                        if call.reminders_json:
+                            try:
+                                reminders = json.loads(call.reminders_json)
+                                reminder_str = ", ".join(
+                                    r.get("description", "") for r in reminders if r.get("description")
+                                )
+                            except json.JSONDecodeError:
+                                pass
 
-                    DriverSheduledCalls.create_retry_schedule(
-                        driver=driver_identifier,
-                        violation=violation_str,
-                        reminder=reminder_str,
-                        custom_rule=call.custom_rules,
-                        call_scheduled_date_time=next_retry_at,
-                        retry_count=next_retry_count,
-                        parent_call_sid=call.call_sid,
-                    )
-                    retry_scheduled = True
-                    logger.info(
-                        f"[RETRY] Created retry schedule for driver {driver_identifier}, "
-                        f"parent_call_sid={call.call_sid}"
-                    )
+                        DriverSheduledCalls.create_retry_schedule(
+                            driver=driver_identifier,
+                            violation=violation_str,
+                            reminder=reminder_str,
+                            custom_rule=call.custom_rules,
+                            call_scheduled_date_time=next_retry_at,
+                            retry_count=next_retry_count,
+                            parent_call_sid=call.call_sid,
+                        )
+                        retry_scheduled = True
+                        logger.info(
+                            f"[RETRY] Created retry schedule for driver {driver_identifier}, "
+                            f"parent_call_sid={call.call_sid}"
+                        )
                 else:
                     logger.warning(
                         f"[RETRY] Cannot schedule retry for call {call.call_sid}: "
