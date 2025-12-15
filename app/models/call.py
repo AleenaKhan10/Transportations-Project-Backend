@@ -31,6 +31,15 @@ class CallStatus(str, Enum):
     FAILED = "failed"
 
 
+class RetryStatus(str, Enum):
+    """Retry status enum for tracking retry state of failed calls."""
+
+    # Using lowercase values to match database storage
+    none = "none"  # No retry needed (completed or first attempt)
+    retry_scheduled = "retry_scheduled"  # Retry is scheduled
+    retry_exhausted = "retry_exhausted"  # Max retries reached, giving up
+
+
 class Call(SQLModel, table=True):
     """
     Call model representing an ElevenLabs conversational AI call.
@@ -117,6 +126,67 @@ class Call(SQLModel, table=True):
         description="JSON string of full metadata from post-call webhook",
     )
 
+    # =========================================================================
+    # Call Context Fields (for retry capability)
+    # =========================================================================
+    violations_json: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="JSON string of violation details for retry",
+    )
+    reminders_json: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="JSON string of reminder details for retry",
+    )
+    custom_rules: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Custom rules text for retry",
+    )
+    phone_number: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        nullable=True,
+        description="Driver phone number for retry",
+    )
+    driver_name: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        nullable=True,
+        description="Driver name for retry",
+    )
+
+    # =========================================================================
+    # Retry Tracking Fields
+    # =========================================================================
+    retry_count: int = Field(
+        default=0,
+        nullable=False,
+        description="Current retry attempt (0 = first try)",
+    )
+    max_retries: int = Field(
+        default=3,
+        nullable=False,
+        description="Maximum number of retries allowed",
+    )
+    retry_status: RetryStatus = Field(
+        default=RetryStatus.none,
+        nullable=False,
+        description="Retry status: none, retry_scheduled, retry_exhausted",
+    )
+    next_retry_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), nullable=True),
+        description="When the retry is scheduled (for frontend display)",
+    )
+    parent_call_sid: Optional[str] = Field(
+        default=None,
+        max_length=255,
+        nullable=True,
+        description="If this is a retry, the call_sid of the original call",
+    )
+
     @classmethod
     def get_session(cls) -> Session:
         """Get a database session."""
@@ -131,6 +201,15 @@ class Call(SQLModel, table=True):
         call_start_time: datetime,
         trip_id: Optional[str] = None,
         status: CallStatus = CallStatus.IN_PROGRESS,
+        # New fields for call context (retry capability)
+        violations_json: Optional[str] = None,
+        reminders_json: Optional[str] = None,
+        custom_rules: Optional[str] = None,
+        phone_number: Optional[str] = None,
+        driver_name: Optional[str] = None,
+        retry_count: int = 0,
+        max_retries: int = 3,
+        parent_call_sid: Optional[str] = None,
     ) -> "Call":
         """
         Create a new Call record with call_sid (before calling ElevenLabs).
@@ -144,6 +223,14 @@ class Call(SQLModel, table=True):
             call_start_time: Timezone-aware UTC datetime when call is initiated
             trip_id: Optional trip ID (can be None if no active trip)
             status: Initial status (default: IN_PROGRESS)
+            violations_json: JSON string of violation details for retry
+            reminders_json: JSON string of reminder details for retry
+            custom_rules: Custom rules text for retry
+            phone_number: Driver phone number for retry
+            driver_name: Driver name for retry
+            retry_count: Current retry attempt (0 = first try)
+            max_retries: Maximum number of retries allowed (default: 3)
+            parent_call_sid: If this is a retry, the call_sid of the original call
 
         Returns:
             Created Call object with conversation_id=NULL
@@ -160,6 +247,18 @@ class Call(SQLModel, table=True):
                 call_start_time=call_start_time,
                 status=status,
                 trip_id=trip_id,
+                # Call context fields
+                violations_json=violations_json,
+                reminders_json=reminders_json,
+                custom_rules=custom_rules,
+                phone_number=phone_number,
+                driver_name=driver_name,
+                # Retry tracking fields
+                retry_count=retry_count,
+                max_retries=max_retries,
+                retry_status=RetryStatus.none,
+                next_retry_at=None,
+                parent_call_sid=parent_call_sid,
             )
             session.add(call)
             session.commit()
@@ -447,6 +546,178 @@ class Call(SQLModel, table=True):
                     call.analysis_data = analysis_data
                 if metadata_json:
                     call.metadata_json = metadata_json
+                call.updated_at = datetime.now(timezone.utc)
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+
+            return call
+
+    # =========================================================================
+    # Methods for In-Progress Calls Processing and Retry Logic
+    # =========================================================================
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def get_in_progress_calls_older_than(cls, minutes: int = 2) -> list["Call"]:
+        """
+        Get all calls with IN_PROGRESS status that are older than specified minutes.
+
+        Used by the scheduler job to find calls that need status finalization.
+
+        Args:
+            minutes: Minimum age in minutes for calls to be considered (default: 2)
+
+        Returns:
+            List of Call objects that are IN_PROGRESS and older than threshold
+        """
+        from datetime import timedelta
+
+        threshold = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+        with cls.get_session() as session:
+            stmt = select(cls).where(
+                cls.status == CallStatus.IN_PROGRESS,
+                cls.call_start_time < threshold
+            )
+            results = session.exec(stmt).all()
+            return list(results)
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def update_retry_status(
+        cls,
+        call_sid: str,
+        retry_status: "RetryStatus",
+        next_retry_at: Optional[datetime] = None,
+    ) -> Optional["Call"]:
+        """
+        Update the retry status of a call.
+
+        Args:
+            call_sid: Generated call identifier
+            retry_status: New retry status to set
+            next_retry_at: When the retry is scheduled (for frontend display)
+
+        Returns:
+            Updated Call object if found, None otherwise
+        """
+        with cls.get_session() as session:
+            call = session.exec(select(cls).where(cls.call_sid == call_sid)).first()
+
+            if call:
+                call.retry_status = retry_status
+                call.next_retry_at = next_retry_at
+                call.updated_at = datetime.now(timezone.utc)
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+
+            return call
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def mark_call_failed_with_retry(
+        cls,
+        call_sid: str,
+        call_end_time: datetime,
+        next_retry_at: datetime,
+        transcript_summary: Optional[str] = None,
+        call_duration_seconds: Optional[int] = None,
+        cost: Optional[float] = None,
+        call_successful: Optional[bool] = None,
+        analysis_data: Optional[str] = None,
+        metadata_json: Optional[str] = None,
+    ) -> Optional["Call"]:
+        """
+        Mark a call as FAILED and set retry_status to RETRY_SCHEDULED.
+
+        Args:
+            call_sid: Generated call identifier
+            call_end_time: When the call ended
+            next_retry_at: When the retry is scheduled
+            Other args: Optional metadata from ElevenLabs
+
+        Returns:
+            Updated Call object if found, None otherwise
+        """
+        with cls.get_session() as session:
+            call = session.exec(select(cls).where(cls.call_sid == call_sid)).first()
+
+            if call:
+                call.status = CallStatus.FAILED
+                call.call_end_time = call_end_time
+                call.retry_status = RetryStatus.retry_scheduled
+                call.next_retry_at = next_retry_at
+
+                # Update metadata if provided
+                if transcript_summary is not None:
+                    call.transcript_summary = transcript_summary
+                if call_duration_seconds is not None:
+                    call.call_duration_seconds = call_duration_seconds
+                if cost is not None:
+                    call.cost = cost
+                if call_successful is not None:
+                    call.call_successful = call_successful
+                if analysis_data is not None:
+                    call.analysis_data = analysis_data
+                if metadata_json is not None:
+                    call.metadata_json = metadata_json
+
+                call.updated_at = datetime.now(timezone.utc)
+                session.add(call)
+                session.commit()
+                session.refresh(call)
+
+            return call
+
+    @classmethod
+    @db_retry(max_retries=3)
+    def mark_call_failed_exhausted(
+        cls,
+        call_sid: str,
+        call_end_time: datetime,
+        transcript_summary: Optional[str] = None,
+        call_duration_seconds: Optional[int] = None,
+        cost: Optional[float] = None,
+        call_successful: Optional[bool] = None,
+        analysis_data: Optional[str] = None,
+        metadata_json: Optional[str] = None,
+    ) -> Optional["Call"]:
+        """
+        Mark a call as FAILED and set retry_status to RETRY_EXHAUSTED (no more retries).
+
+        Args:
+            call_sid: Generated call identifier
+            call_end_time: When the call ended
+            Other args: Optional metadata from ElevenLabs
+
+        Returns:
+            Updated Call object if found, None otherwise
+        """
+        with cls.get_session() as session:
+            call = session.exec(select(cls).where(cls.call_sid == call_sid)).first()
+
+            if call:
+                call.status = CallStatus.FAILED
+                call.call_end_time = call_end_time
+                call.retry_status = RetryStatus.retry_exhausted
+                call.next_retry_at = None
+
+                # Update metadata if provided
+                if transcript_summary is not None:
+                    call.transcript_summary = transcript_summary
+                if call_duration_seconds is not None:
+                    call.call_duration_seconds = call_duration_seconds
+                if cost is not None:
+                    call.cost = cost
+                if call_successful is not None:
+                    call.call_successful = call_successful
+                if analysis_data is not None:
+                    call.analysis_data = analysis_data
+                if metadata_json is not None:
+                    call.metadata_json = metadata_json
+
                 call.updated_at = datetime.now(timezone.utc)
                 session.add(call)
                 session.commit()

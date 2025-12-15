@@ -28,6 +28,19 @@ async def process_scheduled_calls_job():
         logger.error(f"[SCHEDULER] Error in scheduled calls job: {str(e)}", exc_info=True)
 
 
+async def process_in_progress_calls_job():
+    """
+    Job function that processes in-progress calls.
+    This is called by the scheduler every minute.
+    Checks for calls stuck in IN_PROGRESS status and finalizes them.
+    """
+    try:
+        from utils.in_progress_calls_processor import in_progress_calls_processor
+        await in_progress_calls_processor.process_in_progress_calls()
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Error in in-progress calls job: {str(e)}", exc_info=True)
+
+
 def init_scheduler():
     """
     Initialize and start the APScheduler.
@@ -60,9 +73,18 @@ def init_scheduler():
         replace_existing=True
     )
 
+    # Add job to process in-progress calls every minute
+    scheduler.add_job(
+        process_in_progress_calls_job,
+        trigger=IntervalTrigger(minutes=1),
+        id="process_in_progress_calls",
+        name="Process In-Progress Calls (Finalize and Retry)",
+        replace_existing=True
+    )
+
     # Start the scheduler
     scheduler.start()
-    logger.info("[SCHEDULER] APScheduler started - processing scheduled calls every minute")
+    logger.info("[SCHEDULER] APScheduler started - processing scheduled calls and in-progress calls every minute")
 
     return scheduler
 

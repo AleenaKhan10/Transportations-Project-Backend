@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     SENTRY_ENVIRONMENT: str = "production"
     SENTRY_TRACES_SAMPLE_RATE: float = 1.0
 
+    # File logging settings
+    LOG_FILE_ENABLED: bool = False  # Enable file logging for calls
+    LOG_FILE_PATH: str = "logs/calls.log"  # Path to log file
+
     class Config:
         env_file = ".env"
         extra = "ignore"

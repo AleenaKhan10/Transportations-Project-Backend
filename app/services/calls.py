@@ -47,6 +47,15 @@ class CallResponse(BaseModel):
     call_successful: Optional[bool]
     created_at: str
     updated_at: str
+    # Retry tracking fields
+    retry_count: int = 0
+    max_retries: int = 3
+    retry_status: str = "none"
+    next_retry_at: Optional[str] = None
+    parent_call_sid: Optional[str] = None  # Link to original call if this is a retry
+    # Call context fields (for display)
+    driver_name: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class CallWithTranscriptResponse(BaseModel):
@@ -55,6 +64,7 @@ class CallWithTranscriptResponse(BaseModel):
     call_sid: str
     conversation_id: Optional[str]
     driver_id: Optional[str]
+    trip_id: Optional[str] = None
     status: str
     call_start_time: str
     call_end_time: Optional[str]
@@ -65,6 +75,15 @@ class CallWithTranscriptResponse(BaseModel):
     call_successful: Optional[bool]
     transcript: List[TranscriptMessage]
     transcript_count: int
+    # Retry tracking fields
+    retry_count: int = 0
+    max_retries: int = 3
+    retry_status: str = "none"
+    next_retry_at: Optional[str] = None
+    parent_call_sid: Optional[str] = None  # Link to original call if this is a retry
+    # Call context fields
+    driver_name: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 # Endpoints
@@ -142,9 +161,21 @@ async def list_calls(
                         created_at=call.created_at.isoformat(),
                         updated_at=call.updated_at.isoformat(),
                         trip_id=call.trip_id,
+                        # Retry tracking fields
+                        retry_count=call.retry_count,
+                        max_retries=call.max_retries,
+                        retry_status=call.retry_status.value if call.retry_status else "none",
+                        next_retry_at=(
+                            call.next_retry_at.isoformat()
+                            if call.next_retry_at
+                            else None
+                        ),
+                        parent_call_sid=call.parent_call_sid,
+                        # Call context fields
+                        driver_name=call.driver_name,
+                        phone_number=call.phone_number,
                     )
                 )
-            # TEST
 
             return result
 
@@ -213,6 +244,20 @@ async def get_active_calls():
                         call_successful=call.call_successful,
                         created_at=call.created_at.isoformat(),
                         updated_at=call.updated_at.isoformat(),
+                        trip_id=call.trip_id,
+                        # Retry tracking fields
+                        retry_count=call.retry_count,
+                        max_retries=call.max_retries,
+                        retry_status=call.retry_status.value if call.retry_status else "none",
+                        next_retry_at=(
+                            call.next_retry_at.isoformat()
+                            if call.next_retry_at
+                            else None
+                        ),
+                        parent_call_sid=call.parent_call_sid,
+                        # Call context fields
+                        driver_name=call.driver_name,
+                        phone_number=call.phone_number,
                     )
                 )
 
@@ -269,6 +314,20 @@ async def get_call_details(call_sid: str):
             call_successful=call.call_successful,
             created_at=call.created_at.isoformat(),
             updated_at=call.updated_at.isoformat(),
+            trip_id=call.trip_id,
+            # Retry tracking fields
+            retry_count=call.retry_count,
+            max_retries=call.max_retries,
+            retry_status=call.retry_status.value if call.retry_status else "none",
+            next_retry_at=(
+                call.next_retry_at.isoformat()
+                if call.next_retry_at
+                else None
+            ),
+            parent_call_sid=call.parent_call_sid,
+            # Call context fields
+            driver_name=call.driver_name,
+            phone_number=call.phone_number,
         )
 
     except HTTPException:
@@ -411,6 +470,7 @@ async def get_call_with_transcript(call_sid: str):
             call_sid=call.call_sid,
             conversation_id=call.conversation_id,
             driver_id=call.driver_id,
+            trip_id=call.trip_id,
             status=call.status.value,
             call_start_time=call.call_start_time.isoformat(),
             call_end_time=(
@@ -423,6 +483,19 @@ async def get_call_with_transcript(call_sid: str):
             call_successful=call.call_successful,
             transcript=transcript_messages,
             transcript_count=len(transcript_messages),
+            # Retry tracking fields
+            retry_count=call.retry_count,
+            max_retries=call.max_retries,
+            retry_status=call.retry_status.value if call.retry_status else "none",
+            next_retry_at=(
+                call.next_retry_at.isoformat()
+                if call.next_retry_at
+                else None
+            ),
+            parent_call_sid=call.parent_call_sid,
+            # Call context fields
+            driver_name=call.driver_name,
+            phone_number=call.phone_number,
         )
 
     except HTTPException:

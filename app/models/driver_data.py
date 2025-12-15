@@ -11,6 +11,7 @@ from models.driver_model_prompt import DriverPrompts
 from logic.auth.service import UserService, AuditService
 from logic.auth.security import get_current_active_user
 from models.user import User, UserUpdate
+from utils.call_logger import log_call_trigger, log_retry_schedule, log_duplicate_detected
 
 logger = logging.getLogger(__name__)
 
@@ -1383,6 +1384,22 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
         from models.call import Call, CallStatus
         from datetime import datetime, timezone
 
+        # Log call trigger for file tracking
+        is_retry = request.retry_count > 0
+        log_call_trigger(
+            source="API_ELEVENLABS" if not is_retry else "SCHEDULER_RETRY",
+            driver=driver.driverId,
+            call_sid=call_sid,
+            retry_count=request.retry_count,
+            parent_call_sid=request.parent_call_sid,
+            trip_id=driver.violations.tripId if driver.violations else None,
+            reason="RETRY_CALL" if is_retry else "INITIAL_CALL",
+            extra_data={
+                "driver_name": driver.driverName,
+                "phone": normalized_phone,
+            }
+        )
+
         print("--------------------- CALL RECORD IS CREATING MAIN -------------------")
         try:
             # Get trip_id - prefer from violations, then from request, handle empty strings
@@ -1398,18 +1415,47 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
 
             logger.info(f"Using trip_id: {final_trip_id} for call record")
 
+            # Prepare call context for retry capability
+            # Convert violation details to JSON for storage
+            violations_list = []
+            reminders_list = []
+            if driver.violations and driver.violations.violationDetails:
+                for v in driver.violations.violationDetails:
+                    item = {"type": v.type, "description": v.description}
+                    if v.type.upper() == "VIOLATION":
+                        violations_list.append(item)
+                    else:
+                        reminders_list.append(item)
+
+            violations_json = json.dumps(violations_list) if violations_list else None
+            reminders_json = json.dumps(reminders_list) if reminders_list else None
+
             call_record = Call.create_call_with_call_sid(
                 call_sid=call_sid,
                 driver_id=driver.driverId,
                 call_start_time=datetime.now(timezone.utc),
                 trip_id=final_trip_id,  # Can be None if no trip found
                 status=CallStatus.IN_PROGRESS,
+                # Call context for retry capability
+                violations_json=violations_json,
+                reminders_json=reminders_json,
+                custom_rules=driver.customRules,
+                phone_number=normalized_phone,
+                driver_name=driver.driverName,
+                # Retry tracking
+                retry_count=request.retry_count,
+                max_retries=3,
+                parent_call_sid=request.parent_call_sid,
             )
             logger.info(
                 f"Call record created successfully - ID: {call_record.id}, call_sid: {call_sid}"
             )
             logger.info(
                 f"Call record has conversation_id=NULL (will be updated after ElevenLabs responds)"
+            )
+            logger.info(
+                f"Call context saved - violations: {len(violations_list)}, reminders: {len(reminders_list)}, "
+                f"custom_rules: {'Yes' if driver.customRules else 'No'}"
             )
             print("CALL RECORD IS CREATING END")
 

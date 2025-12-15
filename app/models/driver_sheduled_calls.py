@@ -25,6 +25,10 @@ class DriverSheduledCalls(SQLModel, table=True):
 
     status: bool = True
 
+    # Retry tracking
+    retry_count: int = Field(default=0)  # 0 = first attempt, 1 = first retry, etc.
+    parent_call_sid: Optional[str] = Field(default=None)  # Original call's call_sid for retry chain
+
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
@@ -158,4 +162,60 @@ class DriverSheduledCalls(SQLModel, table=True):
             session.add(record)
             session.commit()
             session.refresh(record)
+            return record
+
+    # ---------------------------------------------------------------------
+    # CREATE SINGLE RETRY SCHEDULE
+    # ---------------------------------------------------------------------
+    @classmethod
+    def create_retry_schedule(
+        cls,
+        driver: str,
+        violation: Optional[str],
+        reminder: Optional[str],
+        custom_rule: Optional[str],
+        call_scheduled_date_time: datetime,
+        retry_count: int = 1,
+        parent_call_sid: Optional[str] = None,
+    ) -> "DriverSheduledCalls":
+        """
+        Create a single scheduled call record for retry purposes.
+
+        Args:
+            driver: Driver name or ID
+            violation: Comma-separated violation string
+            reminder: Comma-separated reminder string
+            custom_rule: Custom rules text
+            call_scheduled_date_time: When to trigger the retry
+            retry_count: Current retry attempt number
+            parent_call_sid: Original call's call_sid for linking retry chain
+
+        Returns:
+            Created DriverSheduledCalls record
+        """
+        group_id = uuid.uuid4()
+
+        with cls.get_session() as session:
+            record = cls(
+                schedule_group_id=group_id,
+                driver=driver,
+                violation=violation,
+                reminder=reminder,
+                custom_rule=custom_rule,
+                call_scheduled_date_time=call_scheduled_date_time,
+                status=False,  # Will be set to True by DB procedure when time comes
+                retry_count=retry_count,
+                parent_call_sid=parent_call_sid,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+
+            logger.info(
+                f"Created retry schedule for driver {driver}, "
+                f"retry_count={retry_count}, parent_call_sid={parent_call_sid}, "
+                f"scheduled_at={call_scheduled_date_time}"
+            )
             return record

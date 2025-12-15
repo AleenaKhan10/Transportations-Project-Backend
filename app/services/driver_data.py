@@ -142,7 +142,16 @@ async def make_driver_violation_call_elevenlabs(request: BatchCallRequest):
     This endpoint provides an alternative to the VAPI-based /call endpoint,
     using ElevenLabs conversational AI for outbound driver calls.
     """
-    print("-------------------End point is calling -----------------")
+    import logging
+    from datetime import datetime, timezone
+
+    logger = logging.getLogger(__name__)
+    request_id = datetime.now(timezone.utc).strftime("%H%M%S%f")[:12]
+
+    driver_id = request.drivers[0].driverId if request.drivers else "unknown"
+    logger.info(f"[ENDPOINT] call-elevenlabs received request for driver {driver_id} (request_id={request_id})")
+    print(f"[ENDPOINT] call-elevenlabs received at {datetime.now(timezone.utc).isoformat()} for driver {driver_id}")
+
     try:
         result = await make_drivers_violation_batch_call_elevenlabs(request)
         return result
@@ -291,13 +300,40 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
 
         # Determine status
         # Note: call_successful indicates whether the AI accomplished its goal,
-        # NOT whether the call itself completed. A call is COMPLETED when
-        # conversation_status is 'done' OR 'failed' (both mean the call ended).
-        # ElevenLabs uses 'failed' for calls that ended due to errors (e.g., LLM failure)
-        # but the call itself still happened. The call_successful field is stored
-        # separately for business logic.
+        # NOT whether the call itself completed.
+        # ElevenLabs conversation_status:
+        # - "done": Call completed normally
+        # - "failed": Call ended due to errors (e.g., not answered, LLM failure)
+        #
+        # We mark as FAILED if:
+        # 1. conversation_status is "failed", OR
+        # 2. call_successful is False (AI didn't accomplish goal)
+        # 3. call_duration is 0 or very short (likely not answered)
+        # 4. Voicemail was detected (termination_reason contains "voicemail")
         conversation_status = conversation_data.get("status", "unknown")
-        if conversation_status in ("done", "failed"):
+
+        # Check if call was actually answered (duration > 5 seconds as a threshold)
+        call_not_answered = call_duration < 5
+
+        # Check if voicemail was detected
+        termination_reason = metadata.get("termination_reason", "")
+        voicemail_detected = "voicemail" in termination_reason.lower()
+
+        if conversation_status == "failed" or call_not_answered or call_successful is False or voicemail_detected:
+            new_status = CallStatus.FAILED
+            failure_reasons = []
+            if conversation_status == "failed":
+                failure_reasons.append(f"conversation_status={conversation_status}")
+            if call_not_answered:
+                failure_reasons.append(f"call_duration={call_duration}s")
+            if call_successful is False:
+                failure_reasons.append("call_successful=False")
+            if voicemail_detected:
+                failure_reasons.append(f"voicemail_detected ({termination_reason})")
+            logger.info(
+                f"[STATUS] Marking call as FAILED - reasons: {', '.join(failure_reasons)}"
+            )
+        elif conversation_status == "done":
             new_status = CallStatus.COMPLETED
         else:
             new_status = CallStatus.IN_PROGRESS
@@ -306,21 +342,119 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             f"[METADATA] Extracted data - conversation_status: {conversation_status}, new_status: {new_status.value}, duration: {call_duration}s, cost: ${cost_value}, successful: {call_successful}, has_summary: {bool(transcript_summary)}"
         )
 
-        # Update Call with ALL metadata
-        Call.update_conversation_metadata(
-            call_sid=call.call_sid,
-            status=new_status,
-            call_end_time=call_end_time,
-            transcript_summary=transcript_summary,
-            call_duration_seconds=call_duration,
-            cost=cost_value,
-            call_successful=call_successful,
-            analysis_data=json.dumps(analysis),
-            metadata_json=json.dumps(metadata),
-        )
+        # Track retry info for response
+        retry_scheduled = False
+        next_retry_at = None
+
+        # Handle FAILED status - check if retry should be scheduled
+        if new_status == CallStatus.FAILED:
+            from models.call import RetryStatus
+            from models.driver_sheduled_calls import DriverSheduledCalls
+
+            # Check if retries are available
+            if call.retry_count < call.max_retries:
+                # Calculate retry time (10, 30, 60 minutes based on retry count)
+                retry_delays = [10, 30, 60]
+                delay_minutes = retry_delays[min(call.retry_count, len(retry_delays) - 1)]
+                next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+                next_retry_count = call.retry_count + 1
+
+                logger.info(
+                    f"[RETRY] Scheduling retry {next_retry_count}/{call.max_retries} "
+                    f"for call {call.call_sid} in {delay_minutes} minutes"
+                )
+
+                # Update call with retry status
+                Call.mark_call_failed_with_retry(
+                    call_sid=call.call_sid,
+                    call_end_time=call_end_time,
+                    next_retry_at=next_retry_at,
+                    transcript_summary=transcript_summary,
+                    call_duration_seconds=call_duration,
+                    cost=cost_value,
+                    call_successful=call_successful,
+                    analysis_data=json.dumps(analysis),
+                    metadata_json=json.dumps(metadata),
+                )
+
+                # Create scheduled call for retry using saved context from call
+                driver_identifier = call.driver_name or call.driver_id
+
+                if driver_identifier and (call.violations_json or call.reminders_json or call.custom_rules):
+                    # Parse violations/reminders from JSON to comma-separated strings
+                    violation_str = None
+                    reminder_str = None
+
+                    if call.violations_json:
+                        try:
+                            violations = json.loads(call.violations_json)
+                            violation_str = ", ".join(
+                                v.get("description", "") for v in violations if v.get("description")
+                            )
+                        except json.JSONDecodeError:
+                            pass
+
+                    if call.reminders_json:
+                        try:
+                            reminders = json.loads(call.reminders_json)
+                            reminder_str = ", ".join(
+                                r.get("description", "") for r in reminders if r.get("description")
+                            )
+                        except json.JSONDecodeError:
+                            pass
+
+                    DriverSheduledCalls.create_retry_schedule(
+                        driver=driver_identifier,
+                        violation=violation_str,
+                        reminder=reminder_str,
+                        custom_rule=call.custom_rules,
+                        call_scheduled_date_time=next_retry_at,
+                        retry_count=next_retry_count,
+                        parent_call_sid=call.call_sid,
+                    )
+                    retry_scheduled = True
+                    logger.info(
+                        f"[RETRY] Created retry schedule for driver {driver_identifier}, "
+                        f"parent_call_sid={call.call_sid}"
+                    )
+                else:
+                    logger.warning(
+                        f"[RETRY] Cannot schedule retry for call {call.call_sid}: "
+                        f"missing driver_identifier or call context"
+                    )
+            else:
+                # No more retries - mark as exhausted
+                logger.info(
+                    f"[RETRY] Call {call.call_sid} exhausted all retries "
+                    f"({call.retry_count}/{call.max_retries})"
+                )
+                Call.mark_call_failed_exhausted(
+                    call_sid=call.call_sid,
+                    call_end_time=call_end_time,
+                    transcript_summary=transcript_summary,
+                    call_duration_seconds=call_duration,
+                    cost=cost_value,
+                    call_successful=call_successful,
+                    analysis_data=json.dumps(analysis),
+                    metadata_json=json.dumps(metadata),
+                )
+        else:
+            # Not failed - just update metadata normally
+            Call.update_conversation_metadata(
+                call_sid=call.call_sid,
+                status=new_status,
+                call_end_time=call_end_time,
+                transcript_summary=transcript_summary,
+                call_duration_seconds=call_duration,
+                cost=cost_value,
+                call_successful=call_successful,
+                analysis_data=json.dumps(analysis),
+                metadata_json=json.dumps(metadata),
+            )
 
         logger.info(
-            f"[DB] Successfully updated Call {call.call_sid} with full metadata - status: {new_status.value}, summary: {len(transcript_summary) if transcript_summary else 0} chars"
+            f"[DB] Successfully updated Call {call.call_sid} with full metadata - status: {new_status.value}, "
+            f"retry_scheduled: {retry_scheduled}, summary: {len(transcript_summary) if transcript_summary else 0} chars"
         )
 
         # Step 4: Store transcript
@@ -337,7 +471,14 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
         else:
             for idx, message in enumerate(transcript):
                 role = message.get("role", "unknown")
-                text = message.get("message", "")
+                # Handle null/None message text - skip empty messages
+                text = message.get("message")
+                if text is None or text == "":
+                    logger.warning(
+                        f"[TRANSCRIPT] Skipping empty message at index {idx} for conversation {conversation_id}"
+                    )
+                    continue
+
                 message_time_secs = message.get("time_in_call_secs", 0)
 
                 # Map role to speaker_type
@@ -380,6 +521,11 @@ async def fetch_elevenlabs_conversation(conversation_id: str):
             "transcriptions_total": existing_count + transcriptions_added,
             "should_stop_polling": conversation_status
             in ("done", "failed"),  # Frontend can use this to stop polling
+            # Retry information
+            "retry_scheduled": retry_scheduled,
+            "next_retry_at": next_retry_at.isoformat() if next_retry_at else None,
+            "retry_count": call.retry_count,
+            "max_retries": call.max_retries,
             "conversation_data": conversation_data,
         }
 
