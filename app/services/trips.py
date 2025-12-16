@@ -147,6 +147,40 @@ async def update_customer_group(data: CustomerGroupUpdate):
     }
 
 
+@router.delete("/delete-by-field")
+async def delete_trips_by_field(
+    field_name: str = Query(..., description="The field name to match (e.g., 'tripId', 'primaryDriverId')"),
+    field_value: str = Query(..., description="The value to match for deletion")
+):
+    """
+    Delete trips by matching a specific field name and value.
+
+    Examples:
+    - DELETE /trips/delete-by-field?field_name=tripId&field_value=TR-123445
+    - DELETE /trips/delete-by-field?field_name=primaryDriverId&field_value=DRV-001
+    """
+    from datetime import datetime
+
+    logger.info(f"Delete by field request: {field_name}='{field_value}'")
+
+    result = Trip.delete_by_field(field_name=field_name, field_value=field_value)
+
+    if result["success"]:
+        return {
+            "success": True,
+            "message": result["message"],
+            "field_name": field_name,
+            "field_value": field_value,
+            "deleted_count": result["deleted_count"],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result["message"]
+        )
+
+
 @router.delete("/truncate")
 async def truncate_trips_table():
     """
@@ -155,11 +189,11 @@ async def truncate_trips_table():
     Use with extreme caution - this action cannot be undone.
     """
     from datetime import datetime
-    
+
     logger.warning("⚠️  TRUNCATE REQUEST: About to delete ALL trips from database")
-    
+
     result = Trip.truncate_table()
-    
+
     if result["success"]:
         logger.info(f"✅ Successfully truncated trips table: {result['message']}")
         return {

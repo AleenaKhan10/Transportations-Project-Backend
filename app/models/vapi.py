@@ -27,7 +27,13 @@ class BatchCallRequest(BaseModel):
     callType: str
     timestamp: str
     drivers: List[DriverData]
-    trip_id: Optional[str] = None  # Optional - will be fetched automatically from driver's active trip
+    trip_id: Optional[str] = (
+        None  # Optional - will be fetched automatically from driver's active trip
+    )
+    user_id: int = 0  # Default to 0 for scheduler-triggered calls
+    # Retry tracking fields
+    retry_count: int = 0  # Current retry attempt (0 = first try)
+    parent_call_sid: Optional[str] = None  # Link to original call for retries
 
 
 # --- Request Schema CLOSE ---

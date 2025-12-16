@@ -4,6 +4,7 @@ from sqlmodel import Field, SQLModel, Relationship, Column, JSON
 from sqlalchemy import Text
 from enum import Enum
 
+
 class UserStatus(str, Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -11,9 +12,11 @@ class UserStatus(str, Enum):
     PENDING = "pending"
     EMAIL_VERIFICATION_PENDING = "email_verification_pending"
 
+
 class AuditStatus(str, Enum):
     SUCCESS = "success"
     FAILURE = "failure"
+
 
 # Base Models
 class UserBase(SQLModel):
@@ -27,9 +30,11 @@ class UserBase(SQLModel):
     two_factor_enabled: bool = Field(default=False)
     email_verified: bool = Field(default=False)
 
+
 class UserCreate(UserBase):
     password: str
     role_id: Optional[int] = None
+
 
 class UserUpdate(SQLModel):
     email: Optional[str] = Field(max_length=255, default=None)
@@ -41,25 +46,36 @@ class UserUpdate(SQLModel):
     address: Optional[str] = Field(max_length=500, default=None)
     role_id: Optional[int] = None
 
+
 class UserLogin(SQLModel):
     username: str
     password: str
     grant_type: str = "password"
 
+
 # User model matching exact production database structure
 class User(SQLModel, table=True):
     __tablename__ = "user"  # Match production DB table name
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(max_length=255, unique=True)
     email: Optional[str] = Field(max_length=255, default=None, unique=True)
     full_name: Optional[str] = Field(max_length=255, default=None)
     phone: Optional[str] = Field(max_length=20, default=None)
     avatar: Optional[str] = Field(max_length=500, default=None)
-    status: Optional[str] = Field(default="active")  # enum('active','inactive','suspended','pending')
+    status: Optional[str] = Field(
+        default="active"
+    )  # enum('active','inactive','suspended','pending')
     department: Optional[str] = Field(max_length=100, default=None)
-    role: Optional[str] = Field(max_length=50, default="user")  # user, admin, super_admin
-    allowed_pages: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # ["dashboard", "drivers", etc]
+    role: Optional[str] = Field(
+        max_length=50, default="user"
+    )  # user, admin, super_admin
+    allowed_pages: Optional[dict] = Field(
+        default=None, sa_column=Column(JSON)
+    )  # ["dashboard", "drivers", etc]
+    allowed_actions: Optional[dict] = Field(
+        default=None, sa_column=Column(JSON)
+    )  # ["outbound_calls", etc]
     address: Optional[str] = Field(max_length=500, default=None)
     two_factor_enabled: Optional[bool] = Field(default=False)
     two_factor_secret: Optional[str] = Field(max_length=100, default=None)
@@ -78,7 +94,7 @@ class User(SQLModel, table=True):
 
 class UserSession(SQLModel, table=True):
     __tablename__ = "user_sessions"
-    
+
     id: str = Field(primary_key=True, max_length=255)
     user_id: int = Field(index=True)
     ip_address: Optional[str] = Field(max_length=45, default=None)
@@ -87,13 +103,17 @@ class UserSession(SQLModel, table=True):
     expires_at: datetime = Field(index=True)
     is_active: bool = Field(default=True, index=True)
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    token_status: str = Field(default="active", max_length=20, index=True)  # 'active', 'revoked', 'expired'
-    token_jti: Optional[str] = Field(max_length=255, default=None, index=True)  # JWT ID for tracking
+    token_status: str = Field(
+        default="active", max_length=20, index=True
+    )  # 'active', 'revoked', 'expired'
+    token_jti: Optional[str] = Field(
+        max_length=255, default=None, index=True
+    )  # JWT ID for tracking
 
 
 class PendingEmailVerification(SQLModel, table=True):
     __tablename__ = "pending_email_verifications"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(max_length=255, index=True)
     email: str = Field(max_length=255, index=True)
@@ -106,7 +126,7 @@ class PendingEmailVerification(SQLModel, table=True):
 
 class AuditLog(SQLModel, table=True):
     __tablename__ = "audit_logs"
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: Optional[int] = Field(index=True, default=None)
     user_email: Optional[str] = Field(max_length=255, default=None)
@@ -121,12 +141,14 @@ class AuditLog(SQLModel, table=True):
     error_message: Optional[str] = None
     timestamp: Optional[datetime] = Field(default_factory=datetime.utcnow, index=True)
 
+
 # Response Models
 class RoleResponse(SQLModel):
     id: int
     name: str
     description: Optional[str]
     permissions: List[str] = []
+
 
 class UserResponse(SQLModel):
     id: int
@@ -145,12 +167,14 @@ class UserResponse(SQLModel):
     created_at: datetime
     updated_at: datetime
 
+
 class TokenResponse(SQLModel):
     access_token: str
     token_type: str = "Bearer"
     expires_in: int
     refresh_token: Optional[str] = None
     user: UserResponse
+
 
 class UserStats(SQLModel):
     total_users: int

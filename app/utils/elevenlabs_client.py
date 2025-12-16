@@ -23,7 +23,8 @@ class ElevenLabsClient:
     def __init__(self):
         """Initialize ElevenLabs client with API configuration."""
         self.base_url = "https://api.elevenlabs.io/v1/convai"
-        self.api_key = settings.ELEVENLABS_API_KEY
+        # self.api_key = settings.ELEVENLABS_API_KEY
+        self.api_key = "35740cee374db8d2c5ffec1a4f64871a"
 
         # Validate API key is configured
         if not self.api_key:
@@ -36,7 +37,7 @@ class ElevenLabsClient:
         transfer_to: str,
         call_sid: str,
         dispatcher_name: str,
-        driver_id: str = None
+        driver_id: str = None,
     ) -> Dict[str, Any]:
         """
         Create an outbound call via ElevenLabs API.
@@ -66,13 +67,15 @@ class ElevenLabsClient:
                     "transfer_to": transfer_to,
                     "call_sid": call_sid,
                     "dispatcher_name": dispatcher_name,
-                    "driver_id": driver_id
+                    "driver_id": driver_id,
                 }
-            }
+            },
         }
 
         logger.info(f"Initiating ElevenLabs outbound call to {to_number}")
-        logger.info(f"Call parameters: call_sid={call_sid}, dispatcher={dispatcher_name}")
+        logger.info(
+            f"Call parameters: call_sid={call_sid}, dispatcher={dispatcher_name}"
+        )
 
         # Log outgoing payload (full structure for debugging)
         logger.info("=" * 100)
@@ -95,7 +98,7 @@ class ElevenLabsClient:
                             "xi-api-key": self.api_key,
                             "Content-Type": "application/json",
                         },
-                        timeout=30.0
+                        timeout=30.0,
                     )
 
                     # Check for HTTP errors
@@ -111,30 +114,42 @@ class ElevenLabsClient:
                     logger.info("=" * 100)
                     logger.info("ELEVENLABS API RESPONSE - SUCCESS")
                     logger.info("=" * 100)
-                    logger.info(f"Conversation ID: {response_data.get('conversation_id', 'N/A')}")
+                    logger.info(
+                        f"Conversation ID: {response_data.get('conversation_id', 'N/A')}"
+                    )
                     logger.info(f"Call SID: {response_data.get('callSid', 'N/A')}")
                     logger.info("=" * 100)
 
                     return response_data
 
             except httpx.TimeoutException as timeout_error:
-                logger.error(f"Timeout on attempt {attempt}/{self.MAX_RETRIES}: Unable to reach ElevenLabs API")
+                logger.error(
+                    f"Timeout on attempt {attempt}/{self.MAX_RETRIES}: Unable to reach ElevenLabs API"
+                )
 
                 if attempt < self.MAX_RETRIES:
                     # Exponential backoff: 2^attempt seconds
-                    delay = 2 ** attempt
-                    logger.info(f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})")
+                    delay = 2**attempt
+                    logger.info(
+                        f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error("All retry attempts exhausted for ElevenLabs API call")
-                    raise Exception("Network error: Unable to reach ElevenLabs API after multiple retries")
+                    raise Exception(
+                        "Network error: Unable to reach ElevenLabs API after multiple retries"
+                    )
 
             except httpx.HTTPError as http_error:
-                logger.error(f"HTTP error on attempt {attempt}/{self.MAX_RETRIES}: {str(http_error)}")
+                logger.error(
+                    f"HTTP error on attempt {attempt}/{self.MAX_RETRIES}: {str(http_error)}"
+                )
 
                 if attempt < self.MAX_RETRIES:
-                    delay = 2 ** attempt
-                    logger.info(f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})")
+                    delay = 2**attempt
+                    logger.info(
+                        f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error("All retry attempts exhausted for ElevenLabs API call")
@@ -142,7 +157,9 @@ class ElevenLabsClient:
 
             except Exception as error:
                 # Log the error with details
-                logger.error(f"Error creating ElevenLabs call on attempt {attempt}/{self.MAX_RETRIES}: {str(error)}")
+                logger.error(
+                    f"Error creating ElevenLabs call on attempt {attempt}/{self.MAX_RETRIES}: {str(error)}"
+                )
 
                 # Check if this is an API error (already formatted)
                 if "ElevenLabs API Error" in str(error):
@@ -151,8 +168,10 @@ class ElevenLabsClient:
 
                 # Retry on other errors
                 if attempt < self.MAX_RETRIES:
-                    delay = 2 ** attempt
-                    logger.info(f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})")
+                    delay = 2**attempt
+                    logger.info(
+                        f"Retrying in {delay} seconds... (attempt {attempt + 1}/{self.MAX_RETRIES})"
+                    )
                     await asyncio.sleep(delay)
                 else:
                     logger.error("All retry attempts exhausted for ElevenLabs API call")
@@ -189,7 +208,7 @@ class ElevenLabsClient:
                     headers={
                         "xi-api-key": self.api_key,
                     },
-                    timeout=30.0
+                    timeout=30.0,
                 )
 
                 # Check for HTTP errors
@@ -209,18 +228,20 @@ class ElevenLabsClient:
                 logger.info("=" * 100)
                 logger.info("ELEVENLABS CONVERSATION DATA - SUCCESS")
                 logger.info("=" * 100)
-                logger.info(f"Conversation ID: {conversation_data.get('conversation_id', 'N/A')}")
+                logger.info(
+                    f"Conversation ID: {conversation_data.get('conversation_id', 'N/A')}"
+                )
                 logger.info(f"Status: {conversation_data.get('status', 'N/A')}")
 
                 # Log transcript info if available
-                transcript = conversation_data.get('transcript', [])
+                transcript = conversation_data.get("transcript", [])
                 if transcript:
                     logger.info(f"Transcript Messages: {len(transcript)}")
 
                 # Log metadata if available
-                metadata = conversation_data.get('metadata', {})
+                metadata = conversation_data.get("metadata", {})
                 if metadata:
-                    call_duration = metadata.get('call_duration_secs', 0)
+                    call_duration = metadata.get("call_duration_secs", 0)
                     logger.info(f"Call Duration: {call_duration} seconds")
 
                 logger.info("=" * 100)
@@ -228,11 +249,15 @@ class ElevenLabsClient:
                 return conversation_data
 
         except httpx.TimeoutException as timeout_error:
-            logger.error(f"Timeout: Unable to reach ElevenLabs API for conversation {conversation_id}")
+            logger.error(
+                f"Timeout: Unable to reach ElevenLabs API for conversation {conversation_id}"
+            )
             raise Exception("Network error: Unable to reach ElevenLabs API")
 
         except httpx.HTTPError as http_error:
-            logger.error(f"HTTP error fetching conversation {conversation_id}: {str(http_error)}")
+            logger.error(
+                f"HTTP error fetching conversation {conversation_id}: {str(http_error)}"
+            )
             raise Exception(f"HTTP error: {str(http_error)}")
 
         except Exception as error:
