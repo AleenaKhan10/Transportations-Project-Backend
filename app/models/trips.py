@@ -239,16 +239,77 @@ class Trip(SQLModel, table=True):
             try:
                 statement = select(cls).where(cls.tripId == trip_id)
                 trip = session.exec(statement).first()
-                
+
                 if trip:
                     session.delete(trip)
                     session.commit()
                     return True
                 return False
-                
+
             except Exception as err:
                 logger.error(f'Database delete error: {err}', exc_info=True)
                 return False
+
+    @classmethod
+    def delete_by_field(cls, field_name: str, field_value: str) -> dict:
+        """
+        Delete trips by matching a specific field name and value.
+
+        Args:
+            field_name: The column name to search (e.g., 'tripId', 'primaryDriverId')
+            field_value: The value to match
+
+        Returns:
+            dict with success status, message, and deleted count
+        """
+        # Validate field exists on the model
+        if not hasattr(cls, field_name):
+            return {
+                "success": False,
+                "message": f"Invalid field name: '{field_name}'. Field does not exist on Trip model.",
+                "deleted_count": 0
+            }
+
+        with cls.get_session() as session:
+            try:
+                # Get the column attribute dynamically
+                column = getattr(cls, field_name)
+
+                # Find matching records
+                statement = select(cls).where(column == field_value)
+                trips = session.exec(statement).all()
+
+                if not trips:
+                    return {
+                        "success": True,
+                        "message": f"No trips found with {field_name}='{field_value}'",
+                        "deleted_count": 0
+                    }
+
+                deleted_count = len(trips)
+
+                # Delete all matching records
+                for trip in trips:
+                    session.delete(trip)
+
+                session.commit()
+
+                logger.info(f"Deleted {deleted_count} trips where {field_name}='{field_value}'")
+
+                return {
+                    "success": True,
+                    "message": f"Successfully deleted {deleted_count} trip(s) where {field_name}='{field_value}'",
+                    "deleted_count": deleted_count
+                }
+
+            except Exception as err:
+                logger.error(f'Database delete by field error: {err}', exc_info=True)
+                session.rollback()
+                return {
+                    "success": False,
+                    "message": f"Database error: {str(err)}",
+                    "deleted_count": 0
+                }
     
     @classmethod
     def truncate_table(cls, timeout_seconds: int = 300) -> dict:
