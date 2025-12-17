@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from models.driver_memories import DriverMemories
-
+from sqlmodel import text
 
 # Router with prefix + tags
 router = APIRouter(prefix="/driver_memories", tags=["driver_memories"])
