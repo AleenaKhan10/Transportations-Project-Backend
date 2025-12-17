@@ -10,6 +10,7 @@ from pgvector.sqlalchemy import Vector
 
 class DriverMemories(SQLModel, table=True):
     __tablename__ = "driver_memories"
+    __table_args__ = {"schema": "dev"}  # ✅ REQUIRED
 
     id: Optional[UUID] = Field(
         default=None,
