@@ -196,8 +196,6 @@ app.include_router(calls_router)
 # driver sheduled call
 app.include_router(driver_sheduled_calls_service)
 
-"test"
-
 
 # main
 if __name__ == "__main__":
