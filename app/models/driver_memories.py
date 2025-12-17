@@ -8,6 +8,21 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from pgvector.sqlalchemy import Vector
 
 
+class DriverMemoriesResponse(SQLModel):
+    """Response schema for DriverMemories - excludes embedding field (numpy array)"""
+    id: Optional[UUID] = None
+    driver_id: str
+    caller_id: Optional[str] = None
+    trip_id: Optional[str] = None
+    category: Optional[str] = None
+    summary: str
+    raw_exchange: Optional[str] = None
+    importance: str = "normal"
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    source_message_id: Optional[str] = None
+
+
 class DriverMemories(SQLModel, table=True):
     __tablename__ = "driver_memories"
     __table_args__ = {"schema": "dev"}  # ✅ REQUIRED
