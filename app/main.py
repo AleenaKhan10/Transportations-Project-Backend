@@ -58,6 +58,7 @@ from services.driver_sheduled_calls_service import (
 
 # driver memories
 from services.driver_memories import router as driver_memories
+from services.driver_facts import router as driver_facts
 
 from db.database import engine
 from sqlmodel import SQLModel
@@ -201,6 +202,7 @@ app.include_router(driver_sheduled_calls_service)
 
 # driver memories
 app.include_router(driver_memories)
+app.include_router(driver_facts)
 
 
 # main
