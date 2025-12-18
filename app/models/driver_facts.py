@@ -1,56 +1,28 @@
 from typing import Optional
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from db import engine
 from helpers import logger
 
 from sqlmodel import SQLModel, Field, Column, Text, Session, select
 from sqlalchemy import Column, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.sql import func
 
 
 class DriverFacts(SQLModel, table=True):
     __tablename__ = "driver_facts"
     __table_args__ = {"schema": "dev"}
 
-    id: Optional[UUID] = Field(
-        default=None,
-        sa_column=Column(
-            PG_UUID(as_uuid=True),
-            primary_key=True,
-            server_default=func.gen_random_uuid(),
-        ),
-    )
+    id: Optional[UUID] = Field(default_factory=uuid4, primary_key=True)
 
     driver_id: str = Field(nullable=False, index=True)
     caller_id: Optional[str] = Field(default=None, index=True)
     category: Optional[str] = Field(default=None, index=True)
-
-    fact_key: str = Field(sa_column=Column(Text, nullable=False))
-
-    fact_value: str = Field(sa_column=Column(Text, nullable=False))
-
-    source_text: Optional[str] = Field(
-        default=None,
-        sa_column=Column(Text),
-    )
-
-    created_at: datetime = Field(
-        sa_column=Column(
-            nullable=False,
-            server_default=func.now(),
-        )
-    )
-
-    updated_at: datetime = Field(
-        sa_column=Column(
-            nullable=False,
-            server_default=func.now(),
-            onupdate=func.now(),
-        )
-    )
+    fact_key: str = Field(Text, nullable=False)
+    fact_value: str = Field(Text, nullable=False)
+    source_text: Optional[str] = Field(default=None)
+    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
     @classmethod
     def get_session(cls) -> Session:
