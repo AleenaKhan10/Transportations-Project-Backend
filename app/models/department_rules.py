@@ -28,6 +28,9 @@ class DepartmentRules(SQLModel, table=True):
     # Values (Only one will be used based on rule_type)
     threshold: Optional[float] = None       # Used if rule_type is 'number'
     boolean_value: Optional[bool] = None    # Used if rule_type is 'boolean'
+    
+    # New Column to handle the Units
+    unit: Optional[str] = Field(default=None) # e.g. 'Hours', 'Minutes', 'Miles'
 
     # Control
     enabled: bool = Field(default=True)
@@ -69,15 +72,11 @@ class DepartmentRules(SQLModel, table=True):
         cls, 
         department_key: str, 
         rule_key: str, 
-        new_value: Union[float, bool, int]
+        new_value: Union[float, bool, int],
+        new_unit: Optional[str] = None  # <--- New Argument
     ) -> Optional["DepartmentRules"]:
-        """
-        Updates a specific rule based on dept_key and rule_key.
-        Smartly decides whether to update 'threshold' or 'boolean_value'
-        based on the rule's type.
-        """
+        
         with cls.get_session() as session:
-            # 1. Find the specific record
             statement = select(cls).where(
                 cls.department_key == department_key,
                 cls.rule_key == rule_key
@@ -87,17 +86,19 @@ class DepartmentRules(SQLModel, table=True):
             if not record:
                 return None
 
-            # Update the correct column based on type
-            # We do not want to put a boolean value into the threshold column or vice versa.
+            # 1. Update Value (Purana Logic)
             if record.rule_type == 'number':
-                # Ensure it's treated as a number
                 record.threshold = float(new_value)
+                
+                # 2. Update Unit (Only for numbers)
+                if new_unit is not None:
+                    record.unit = new_unit  # <--- Save Unit (Hours/Minutes)
+                    
             elif record.rule_type == 'boolean':
-                # Ensure it's treated as a boolean
                 record.boolean_value = bool(new_value)
+                record.unit = None # Boolean ka unit null kardo safety k liye
 
             record.updated_at = datetime.utcnow()
-            
             session.add(record)
             session.commit()
             session.refresh(record)

@@ -19,6 +19,10 @@ class RuleItemResponse(BaseModel):
     # Logic: 'value' can be a number OR a boolean.
     # Frontend will read this single field instead of checking two columns.
     value: Union[float, bool, int, None] 
+    
+    # NEW FIELD
+    unit: Optional[str] = None  # Frontend ko milega: "Minutes" ya "Hours"
+    
     enabled: bool
 
 # 2. Grouped Department (The Box on UI)
@@ -26,12 +30,15 @@ class DepartmentGroupResponse(BaseModel):
     department_name: str  # Display Name (Derived from key)
     department_key: str   # Logic Key
     rules: List[RuleItemResponse]
+    
 
 # 3. Update Request Body
 class UpdateRuleRequest(BaseModel):
     department_key: str
     rule_key: str
     value: Union[float, bool, int] # The new value to save
+    # NEW FIELD (Optional because boolean rules doesn't have any units)
+    unit: Optional[str] = None
 
 # =====================================================================
 # HELPER: GROUPING LOGIC
@@ -111,7 +118,8 @@ def update_rule_configuration(payload: UpdateRuleRequest):
         updated_record = DepartmentRules.update_rule_value(
             department_key=payload.department_key,
             rule_key=payload.rule_key,
-            new_value=payload.value
+            new_value=payload.value,
+            new_unit=payload.unit  # <--- Pass unit from payload
         )
 
         if not updated_record:
