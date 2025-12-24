@@ -1,36 +1,41 @@
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Any
 from sqlmodel import Field, SQLModel, Session, select
-from db import engine  # Assuming you have this configuration
+from db import engine
 import logging
 from fastapi import HTTPException
 import uuid
 from datetime import datetime
 
+# --- IMPORTING POSTGRES JSONB SUPPORT ---
+# SQLModel needs these SQLAlchemy imports to handle JSON columns
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB 
+
 logger = logging.getLogger(__name__)
 
 class DepartmentRules(SQLModel, table=True):
     __tablename__ = "department_rules"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = {"extend_existing": True, "schema": "dev"} # Added schema 'dev' as per your SQL
 
     # Primary Key
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
 
     # Department Identification
-    department_key: str = Field(index=True)  # e.g., 'dispatch_reports'
+    department_key: str = Field(index=True)
 
     # Rule Identification
-    rule_key: str = Field(index=True)       # e.g., 'low_fuel' (System usage)
-    rule_name: str                          # e.g., 'Low Fuel Alert' (Display usage)
+    rule_key: Optional[str] = Field(index=True)
+    rule_name: str
 
-    # Rule Definition
-    rule_type: str                          # 'number' or 'boolean'
-    
-    # Values (Only one will be used based on rule_type)
-    threshold: Optional[float] = None       # Used if rule_type is 'number'
-    boolean_value: Optional[bool] = None    # Used if rule_type is 'boolean'
-    
-    # New Column to handle the Units
-    unit: Optional[str] = Field(default=None) # e.g. 'Hours', 'Minutes', 'Miles'
+    # Rule Type (Metadata)
+    # We keep this so Frontend knows if it's a Checkbox or Number input
+    rule_type: Optional[str] = None 
+
+    # --- THE NEW HERO: JSONB CONFIGURATION ---
+    # Instead of separate columns (threshold, unit, boolean_value), 
+    # we store everything here.
+    # sa_column=Column(JSONB) tells Postgres to use its special JSONB type.
+    configuration: Optional[Dict[str, Any]] = Field(default={}, sa_column=Column(JSONB))
 
     # Control
     enabled: bool = Field(default=True)
@@ -47,13 +52,13 @@ class DepartmentRules(SQLModel, table=True):
         return Session(engine)
 
     # ---------------------------------------------------------------------
-    # GET ALL RECORDS (Raw Flat Data)
+    # GET ALL RECORDS
     # ---------------------------------------------------------------------
     @classmethod
     def get_all_rules(cls) -> List["DepartmentRules"]:
         """
-        Fetches all rules from the database as flat rows.
-        The Service layer will handle the grouping/transformation.
+        Fetches all rules. The 'configuration' column will automatically 
+        be converted to a Python Dictionary by SQLModel.
         """
         try:
             with cls.get_session() as session:
@@ -65,18 +70,22 @@ class DepartmentRules(SQLModel, table=True):
             raise e
 
     # ---------------------------------------------------------------------
-    # UPDATE SINGLE RULE
+    # UPDATE CONFIGURATION (New Logic)
     # ---------------------------------------------------------------------
     @classmethod
-    def update_rule_value(
+    def update_rule_config(
         cls, 
         department_key: str, 
         rule_key: str, 
-        new_value: Union[float, bool, int],
-        new_unit: Optional[str] = None  # <--- New Argument
+        new_config: Dict[str, Any] # Accepting a full Dictionary now
     ) -> Optional["DepartmentRules"]:
-        
+        """
+        Updates the JSON configuration directly.
+        We no longer check for 'number' or 'boolean' types here.
+        We simply overwrite the old JSON with the new JSON.
+        """
         with cls.get_session() as session:
+            # 1. Find the record
             statement = select(cls).where(
                 cls.department_key == department_key,
                 cls.rule_key == rule_key
@@ -86,18 +95,11 @@ class DepartmentRules(SQLModel, table=True):
             if not record:
                 return None
 
-            # 1. Update Value (Purana Logic)
-            if record.rule_type == 'number':
-                record.threshold = float(new_value)
-                
-                # 2. Update Unit (Only for numbers)
-                if new_unit is not None:
-                    record.unit = new_unit  # <--- Save Unit (Hours/Minutes)
-                    
-            elif record.rule_type == 'boolean':
-                record.boolean_value = bool(new_value)
-                record.unit = None # Boolean ka unit null kardo safety k liye
-
+            # 2. Update the Configuration (JSONB)
+            # This handles Value, Unit, Speed, Fuel, everything at once.
+            record.configuration = new_config
+            
+            # 3. Save
             record.updated_at = datetime.utcnow()
             session.add(record)
             session.commit()
