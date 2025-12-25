@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from sqlmodel import Field, SQLModel, Session, select
 from db import engine
 import logging
@@ -7,7 +7,6 @@ import uuid
 from datetime import datetime
 
 # --- IMPORTING POSTGRES JSONB SUPPORT ---
-# SQLModel needs these SQLAlchemy imports to handle JSON columns
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB 
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class DepartmentRules(SQLModel, table=True):
     __tablename__ = "department_rules"
-    __table_args__ = {"extend_existing": True, "schema": "dev"} # Added schema 'dev' as per your SQL
+    __table_args__ = {"extend_existing": True, "schema": "dev"}
 
     # Primary Key
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -27,15 +26,13 @@ class DepartmentRules(SQLModel, table=True):
     rule_key: Optional[str] = Field(index=True)
     rule_name: str
 
-    # Rule Type (Metadata)
-    # We keep this so Frontend knows if it's a Checkbox or Number input
+    # Rule Type (Metadata for Frontend)
     rule_type: Optional[str] = None 
 
-    # --- THE NEW HERO: JSONB CONFIGURATION ---
-    # Instead of separate columns (threshold, unit, boolean_value), 
-    # we store everything here.
-    # sa_column=Column(JSONB) tells Postgres to use its special JSONB type.
-    configuration: Optional[Dict[str, Any]] = Field(default={}, sa_column=Column(JSONB))
+    # --- JSONB CONFIGURATION ---
+    # sa_column=Column(JSONB) handles both Dict and List automatically
+    # Type is 'Any' to accept both Arrays [] and Objects {}
+    configuration: Optional[Any] = Field(default=None, sa_column=Column(JSONB))
 
     # Control
     enabled: bool = Field(default=True)
@@ -56,10 +53,6 @@ class DepartmentRules(SQLModel, table=True):
     # ---------------------------------------------------------------------
     @classmethod
     def get_all_rules(cls) -> List["DepartmentRules"]:
-        """
-        Fetches all rules. The 'configuration' column will automatically 
-        be converted to a Python Dictionary by SQLModel.
-        """
         try:
             with cls.get_session() as session:
                 statement = select(cls)
@@ -70,22 +63,19 @@ class DepartmentRules(SQLModel, table=True):
             raise e
 
     # ---------------------------------------------------------------------
-    # UPDATE CONFIGURATION (New Logic)
+    # UPDATE CONFIGURATION (Single Rule)
     # ---------------------------------------------------------------------
     @classmethod
     def update_rule_config(
         cls, 
         department_key: str, 
         rule_key: str, 
-        new_config: Dict[str, Any] # Accepting a full Dictionary now
+        new_config: Union[List[Dict[str, Any]], Dict[str, Any]]
     ) -> Optional["DepartmentRules"]:
         """
-        Updates the JSON configuration directly.
-        We no longer check for 'number' or 'boolean' types here.
-        We simply overwrite the old JSON with the new JSON.
+        Updates ONLY the JSON configuration.
         """
         with cls.get_session() as session:
-            # 1. Find the record
             statement = select(cls).where(
                 cls.department_key == department_key,
                 cls.rule_key == rule_key
@@ -95,34 +85,60 @@ class DepartmentRules(SQLModel, table=True):
             if not record:
                 return None
 
-            # 2. Update the Configuration (JSONB)
-            # This handles Value, Unit, Speed, Fuel, everything at once.
             record.configuration = new_config
-            
-            # 3. Save
             record.updated_at = datetime.utcnow()
+            
             session.add(record)
             session.commit()
             session.refresh(record)
-            
             return record
-        
-# ---------------------------------------------------------------------
+
+    # ---------------------------------------------------------------------
+    # BULK UPDATE HELPER (Config + Enabled)
+    # ---------------------------------------------------------------------
+    @classmethod
+    def update_rule_generic(
+        cls, 
+        department_key: str, 
+        rule_key: str, 
+        new_config: List[Dict[str, Any]],
+        is_enabled: bool
+    ) -> bool:
+        """
+        Updates Configuration AND Enabled status based on keys.
+        Used by the Bulk PUT API.
+        """
+        with cls.get_session() as session:
+            statement = select(cls).where(
+                cls.department_key == department_key,
+                cls.rule_key == rule_key
+            )
+            record = session.exec(statement).first()
+
+            if not record:
+                return False
+
+            # Update both fields
+            record.configuration = new_config
+            record.enabled = is_enabled
+            record.updated_at = datetime.utcnow()
+            
+            session.add(record)
+            session.commit()
+            return True
+
+    # ---------------------------------------------------------------------
     # CHECK DEPARTMENT STATUS (Any True = True)
     # ---------------------------------------------------------------------
     @classmethod
     def is_department_enabled(cls, department_key: str) -> bool:
         """
         Returns True if AT LEAST ONE rule in the department is enabled.
-        Returns False only if ALL rules are disabled or no rules exist.
         """
         with cls.get_session() as session:
-            # Logic: We need to find only one record that is enabled
             statement = select(cls).where(
                 cls.department_key == department_key,
                 cls.enabled == True
             )
-            
             result = session.exec(statement).first()
-            
             return True if result else False
