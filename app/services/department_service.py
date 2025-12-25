@@ -166,3 +166,27 @@ def update_rule_configuration(payload: UpdateRuleRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"Error updating rule: {str(e)}"
         )
+        
+
+# Response Schema
+class DepartmentStatusResponse(BaseModel):
+    department_key: str
+    is_active: bool
+
+# Endpoint
+@router.get("/status/{department_key}", response_model=DepartmentStatusResponse)
+def check_department_status(department_key: str):
+    """
+    Checks if the department has any active rules.
+    """
+    try:
+        # Model function call
+        status_bool = DepartmentRules.is_department_enabled(department_key)
+        
+        return {
+            "department_key": department_key,
+            "is_active": status_bool
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

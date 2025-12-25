@@ -106,3 +106,23 @@ class DepartmentRules(SQLModel, table=True):
             session.refresh(record)
             
             return record
+        
+# ---------------------------------------------------------------------
+    # CHECK DEPARTMENT STATUS (Any True = True)
+    # ---------------------------------------------------------------------
+    @classmethod
+    def is_department_enabled(cls, department_key: str) -> bool:
+        """
+        Returns True if AT LEAST ONE rule in the department is enabled.
+        Returns False only if ALL rules are disabled or no rules exist.
+        """
+        with cls.get_session() as session:
+            # Logic: We need to find only one record that is enabled
+            statement = select(cls).where(
+                cls.department_key == department_key,
+                cls.enabled == True
+            )
+            
+            result = session.exec(statement).first()
+            
+            return True if result else False
