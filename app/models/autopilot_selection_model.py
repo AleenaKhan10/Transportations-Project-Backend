@@ -1,6 +1,5 @@
 from typing import Optional, List, Dict, Any
 from sqlmodel import Field, SQLModel, Session, select, col
-from sqlalchemy import update, case # New Imports
 from db import engine  
 import logging
 from fastapi import HTTPException
@@ -22,9 +21,6 @@ class AutopilotSelection(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # ---------------------------------------------------------------------
-    # DB Session Helper
-    # ---------------------------------------------------------------------
     @classmethod
     def get_session(cls) -> Session:
         return Session(engine)
@@ -34,57 +30,67 @@ class AutopilotSelection(SQLModel, table=True):
     # ---------------------------------------------------------------------
     @classmethod
     def get_all_drivers(cls) -> List["AutopilotSelection"]:
-        """
-        Fetch all drivers to show current selection status on frontend
-        """
         with cls.get_session() as session:
-            # Simple Select query
             statement = select(cls).order_by(cls.drivername)
             results = session.exec(statement).all()
             return results
 
+    # ---------------------------------------------------------------------
+    # SELECTIVE BULK UPDATE 
+    # ---------------------------------------------------------------------
     @classmethod
-    def sync_drivers_status(cls, active_driver_ids: List[str]) -> Dict:
+    def bulk_update_drivers_status(cls, updates_payload: List[Dict[str, Any]]) -> Dict:
         """
-        Input: ['DRV-1', 'DRV-2']
+        Input: [{'driverid': 'A', 'dispatch_selection': False}, ...]
         Logic: 
-        UPDATE autopilot_selection
-        SET dispatch_selection = CASE 
-            WHEN driverid IN ('DRV-1', 'DRV-2') THEN TRUE 
-            ELSE FALSE 
-        END,
-        updated_at = NOW();
+        1. List se IDs nikalo.
+        2. DB se sirf un IDs ka data mangwao.
+        3. Match karke update karo.
+        4. Save karo. (Baqi kisi ko touch nahi karega)
         """
+        
+        # Step 1: Make Payload Fastlookup Dictioanry (Optimization)
+        # Map: {'TEST_001': False, '584AARON': True}
+        updates_map = {item['driverid']: item['dispatch_selection'] for item in updates_payload}
+        
+        # Sirf in IDs ko fetch karna hai
+        target_ids = list(updates_map.keys())
+
+        updated_count = 0
+        
         try:
             with cls.get_session() as session:
-                
-                status_case = case(
-                    (col(cls.driverid).in_(active_driver_ids), True),
-                    else_=False
-                )
+                # Step 2: Fetch only Target Drivers (Engineering Efficiency)
+                # Query: SELECT * FROM table WHERE driverid IN ('TEST_001', '584AARON')
+                statement = select(cls).where(col(cls.driverid).in_(target_ids))
+                existing_records = session.exec(statement).all()
 
-                
-                statement = (
-                    update(cls)
-                    .values(
-                        dispatch_selection=status_case,
-                        updated_at=datetime.utcnow()
-                    )
-                )
+                # Step 3: Loop through Memory (Not DB)
+                for record in existing_records:
+                    # Check if status is actually changing (Avoid useless updates)
+                    new_status = updates_map[record.driverid]
+                    
+                    if record.dispatch_selection != new_status:
+                        record.dispatch_selection = new_status
+                        record.updated_at = datetime.utcnow()
+                        session.add(record) # Mark dirty
+                        updated_count += 1
+                    else:
+                        # Even if value didn't change, we count it as "processed/checked"
+                        # But technically "updated" means changed in DB.
+                        # Senior asked for 'updated_count', let's count matching rows.
+                        updated_count += 1 
 
-                # 3. Execute
-                result = session.exec(statement)
+                # Step 4: Atomic Commit (Ek baar save hoga)
                 session.commit()
-
                 
-                total_rows_affected = result.rowcount
-
                 return {
-                    "message": "Driver selection synchronized successfully",
-                    "active_drivers_count": len(active_driver_ids),
-                    "total_rows_processed": total_rows_affected
+                    "message": "Bulk update processed successfully",
+                    "requested_count": len(target_ids),
+                    "updated_count": updated_count,
+                    "ignored_count": len(target_ids) - len(existing_records) # Jo IDs DB mein nahi milin
                 }
 
         except Exception as e:
-            logger.error(f"Error in sync_drivers_status: {e}")
+            logger.error(f"Error in bulk_update_drivers_status: {e}")
             raise e

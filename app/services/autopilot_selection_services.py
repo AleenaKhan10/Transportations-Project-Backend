@@ -13,6 +13,7 @@ router = APIRouter(prefix="/autopilot-selection", tags=["autopilot_selection"])
 # SCHEMAS (Pydantic Models)
 # --------------------------------------------------------
 
+# 1. Output Model (Response)
 class DriverSelectionResponse(BaseModel):
     id: uuid.UUID
     driverid: str
@@ -23,14 +24,16 @@ class DriverSelectionResponse(BaseModel):
     class Config:
         from_attributes = True
 
+# 2. Input Item Model (Single Driver Update)
+class DriverUpdateItem(BaseModel):
+    driverid: str
+    dispatch_selection: bool
+
 # --------------------------------------------------------
-# GET Endpoint - Fetch all drivers
+# GET Endpoint
 # --------------------------------------------------------
 @router.get("/", response_model=List[DriverSelectionResponse])
 def get_autopilot_drivers():
-    """
-    Get list of all drivers and their current dispatch status.
-    """
     try:
         results = AutopilotSelection.get_all_drivers()
         return results
@@ -38,25 +41,28 @@ def get_autopilot_drivers():
         raise HTTPException(status_code=500, detail=str(e))
 
 # --------------------------------------------------------
-# PUT Endpoint - BULK UPDATE
+# PUT Endpoint - SELECTIVE BULK UPDATE
 # --------------------------------------------------------
-# --- 1. NEW INPUT SCHEMA (Simple List of Strings) ---
-class DriverSelectionListRequest(BaseModel):
-    driver_ids: List[str] 
-
-# --- 2. PUT ENDPOINT (Updated Logic) ---
 @router.put("/", status_code=200)
-def update_autopilot_selection(payload: DriverSelectionListRequest):
+def update_autopilot_selection(payload: List[DriverUpdateItem]):
     """
     Payload Example:
-    {
-      "driver_ids": ["DRV-001", "DRV-005"]
-    }
-    Logic: "DRV-001" and "DRV-005" will become TRUE. Everyone else becomes FALSE.
+    [
+      {"driverid": "TEST_001", "dispatch_selection": false},
+      {"driverid": "584AARON", "dispatch_selection": true}
+    ]
+    Logic: Only update these specific drivers. Ignore everyone else.
     """
     try:
-        # Hum direct model function call karenge list pass karke
-        result = AutopilotSelection.sync_drivers_status(payload.driver_ids)
+        # Pydantic list ko simple list of dicts mein convert karo
+        updates_data = [item.dict() for item in payload]
+
+        if not updates_data:
+             raise HTTPException(status_code=400, detail="Payload cannot be empty")
+
+        # Model function call
+        result = AutopilotSelection.bulk_update_drivers_status(updates_data)
+        
         return result
 
     except Exception as e:
