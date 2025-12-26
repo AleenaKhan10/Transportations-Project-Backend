@@ -26,6 +26,8 @@ from services.violation_alerts import router as violation_alerts_router
 from services.dispatched_trips import router as dispatched_trips_router
 from services.driver_mapping import router as driver_mapping_router
 from services.driver_prompt_service import router as driver_prompt_router
+from services.department_service import router as department_rules_router
+from services.autopilot_selection_services import router as autopilot_selection_router
 
 
 # Import new admin routers
@@ -189,6 +191,8 @@ app.include_router(drive_data)
 app.include_router(driver_triggers)
 app.include_router(page_access_token)
 app.include_router(driver_prompt_router)
+app.include_router(department_rules_router)
+app.include_router(autopilot_selection_router)
 
 # ElevenLabs webhooks and call management
 app.include_router(webhooks_elevenlabs_router)
