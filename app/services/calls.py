@@ -56,6 +56,7 @@ class CallResponse(BaseModel):
     # Call context fields (for display)
     driver_name: Optional[str] = None
     phone_number: Optional[str] = None
+    call_source: Optional[str] = None
 
 
 class CallWithTranscriptResponse(BaseModel):
@@ -164,7 +165,9 @@ async def list_calls(
                         # Retry tracking fields
                         retry_count=call.retry_count,
                         max_retries=call.max_retries,
-                        retry_status=call.retry_status.value if call.retry_status else "none",
+                        retry_status=(
+                            call.retry_status.value if call.retry_status else "none"
+                        ),
                         next_retry_at=(
                             call.next_retry_at.isoformat()
                             if call.next_retry_at
@@ -248,7 +251,9 @@ async def get_active_calls():
                         # Retry tracking fields
                         retry_count=call.retry_count,
                         max_retries=call.max_retries,
-                        retry_status=call.retry_status.value if call.retry_status else "none",
+                        retry_status=(
+                            call.retry_status.value if call.retry_status else "none"
+                        ),
                         next_retry_at=(
                             call.next_retry_at.isoformat()
                             if call.next_retry_at
@@ -320,9 +325,7 @@ async def get_call_details(call_sid: str):
             max_retries=call.max_retries,
             retry_status=call.retry_status.value if call.retry_status else "none",
             next_retry_at=(
-                call.next_retry_at.isoformat()
-                if call.next_retry_at
-                else None
+                call.next_retry_at.isoformat() if call.next_retry_at else None
             ),
             parent_call_sid=call.parent_call_sid,
             # Call context fields
@@ -488,9 +491,7 @@ async def get_call_with_transcript(call_sid: str):
             max_retries=call.max_retries,
             retry_status=call.retry_status.value if call.retry_status else "none",
             next_retry_at=(
-                call.next_retry_at.isoformat()
-                if call.next_retry_at
-                else None
+                call.next_retry_at.isoformat() if call.next_retry_at else None
             ),
             parent_call_sid=call.parent_call_sid,
             # Call context fields

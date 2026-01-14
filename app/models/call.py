@@ -94,6 +94,9 @@ class Call(SQLModel, table=True):
     )
     trip_id: Optional[str]
 
+    # call source
+    call_source: Optional[str] = None
+
     # Post-call webhook metadata fields
     transcript_summary: Optional[str] = Field(
         default=None,
@@ -577,8 +580,7 @@ class Call(SQLModel, table=True):
 
         with cls.get_session() as session:
             stmt = select(cls).where(
-                cls.status == CallStatus.IN_PROGRESS,
-                cls.call_start_time < threshold
+                cls.status == CallStatus.IN_PROGRESS, cls.call_start_time < threshold
             )
             results = session.exec(stmt).all()
             return list(results)
