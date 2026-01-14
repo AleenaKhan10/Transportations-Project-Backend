@@ -87,6 +87,7 @@ class DriverSheduledCalls(SQLModel, table=True):
                         status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),
+                        call_source="Mannual",
                     )
                     session.add(record)
                     new_records.append(record)
