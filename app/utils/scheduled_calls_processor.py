@@ -181,7 +181,7 @@ class ScheduledCallsProcessor:
                     },
                 }
             ],
-            "call_source": "Autopilot",
+            "call_source": scheduled_call.call_source,
         }
 
         logger.info(
@@ -360,6 +360,9 @@ class ScheduledCallsProcessor:
 
                     # Build payload with trip_id and custom_rules
                     payload = self.build_payload(scheduled_call, driver, trip_id)
+
+                    # ✅ add call_source before sending
+                    payload["call_source"] = scheduled_call.call_source
 
                     # Check if there's anything to say - either violations/reminders OR custom_rule
                     has_violation_details = bool(
