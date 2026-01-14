@@ -34,6 +34,7 @@ class BatchCallRequest(BaseModel):
     # Retry tracking fields
     retry_count: int = 0  # Current retry attempt (0 = first try)
     parent_call_sid: Optional[str] = None  # Link to original call for retries
+    call_source: Optional[str] = None  # Call Source
 
 
 # --- Request Schema CLOSE ---

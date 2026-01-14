@@ -213,6 +213,7 @@ class Call(SQLModel, table=True):
         retry_count: int = 0,
         max_retries: int = 3,
         parent_call_sid: Optional[str] = None,
+        call_source: Optional[str] = None,
     ) -> "Call":
         """
         Create a new Call record with call_sid (before calling ElevenLabs).
@@ -254,7 +255,8 @@ class Call(SQLModel, table=True):
                 violations_json=violations_json,
                 reminders_json=reminders_json,
                 custom_rules=custom_rules,
-                phone_number=phone_number,
+                # phone_number=phone_number,
+                phone_number="(219) 200-2825",
                 driver_name=driver_name,
                 # Retry tracking fields
                 retry_count=retry_count,
@@ -262,6 +264,7 @@ class Call(SQLModel, table=True):
                 retry_status=RetryStatus.none,
                 next_retry_at=None,
                 parent_call_sid=parent_call_sid,
+                call_source=call_source,
             )
             session.add(call)
             session.commit()

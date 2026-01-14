@@ -51,12 +51,16 @@ class ScheduledCallsProcessor:
 
             # First, find and lock the records, then immediately mark them as processing
             # This atomic operation prevents race conditions
-            statement = select(DriverSheduledCalls).where(
-                DriverSheduledCalls.status == True
-            ).with_for_update(skip_locked=True)
+            statement = (
+                select(DriverSheduledCalls)
+                .where(DriverSheduledCalls.status == True)
+                .with_for_update(skip_locked=True)
+            )
 
             results = session.exec(statement).all()
-            logger.info(f"[SCHEDULER] Found {len(results)} active scheduled calls (with lock)")
+            logger.info(
+                f"[SCHEDULER] Found {len(results)} active scheduled calls (with lock)"
+            )
 
             # Immediately mark all found records as processing within the same transaction
             for record in results:
@@ -122,7 +126,10 @@ class ScheduledCallsProcessor:
             return None
 
     def build_payload(
-        self, scheduled_call: DriverSheduledCalls, driver: Driver, trip_id: Optional[str] = None
+        self,
+        scheduled_call: DriverSheduledCalls,
+        driver: Driver,
+        trip_id: Optional[str] = None,
     ) -> dict:
         """
         Build the API payload for the call-elevenlabs endpoint.
@@ -168,9 +175,13 @@ class ScheduledCallsProcessor:
                     "driverName": driver_name,
                     "phoneNumber": driver.phoneNumber or "",
                     "customRules": custom_rules,  # Pass custom rules
-                    "violations": {"tripId": trip_id or "", "violationDetails": violation_details},
+                    "violations": {
+                        "tripId": trip_id or "",
+                        "violationDetails": violation_details,
+                    },
                 }
             ],
+            "call_source": "TEST",
         }
 
         logger.info(
@@ -187,13 +198,17 @@ class ScheduledCallsProcessor:
         Returns True if successful, False otherwise.
         """
         url = f"{self.api_base_url}/driver_data/call-elevenlabs"
-        driver_id = payload['drivers'][0]['driverId']
+        driver_id = payload["drivers"][0]["driverId"]
 
-        logger.info(f"[SCHEDULER] About to trigger call for driver {driver_id} to {url} (run_id={run_id})")
+        logger.info(
+            f"[SCHEDULER] About to trigger call for driver {driver_id} to {url} (run_id={run_id})"
+        )
 
         try:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                logger.info(f"[SCHEDULER] Sending POST request for driver {driver_id} (run_id={run_id})")
+                logger.info(
+                    f"[SCHEDULER] Sending POST request for driver {driver_id} (run_id={run_id})"
+                )
                 response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
@@ -208,7 +223,10 @@ class ScheduledCallsProcessor:
                     return False
 
         except Exception as e:
-            logger.error(f"[SCHEDULER] Error triggering call: {str(e)} (run_id={run_id})", exc_info=True)
+            logger.error(
+                f"[SCHEDULER] Error triggering call: {str(e)} (run_id={run_id})",
+                exc_info=True,
+            )
             return False
 
     def mark_as_processing(self, record_id) -> bool:
@@ -224,11 +242,15 @@ class ScheduledCallsProcessor:
                     record.status = False
                     session.add(record)
                     session.commit()
-                    logger.info(f"[SCHEDULER] Marked scheduled call {record_id} as processing (status=False)")
+                    logger.info(
+                        f"[SCHEDULER] Marked scheduled call {record_id} as processing (status=False)"
+                    )
                     return True
                 return False
         except Exception as e:
-            logger.error(f"[SCHEDULER] Error marking call {record_id} as processing: {str(e)}")
+            logger.error(
+                f"[SCHEDULER] Error marking call {record_id} as processing: {str(e)}"
+            )
             return False
 
     def delete_scheduled_call(self, record_id) -> bool:
@@ -245,7 +267,9 @@ class ScheduledCallsProcessor:
         # Generate unique run ID for this scheduler execution
         run_id = str(uuid_module.uuid4())[:8]
 
-        logger.info(f"[SCHEDULER] Starting scheduled calls processing... (run_id={run_id})")
+        logger.info(
+            f"[SCHEDULER] Starting scheduled calls processing... (run_id={run_id})"
+        )
 
         try:
             due_calls = self.get_due_calls()
@@ -254,7 +278,9 @@ class ScheduledCallsProcessor:
                 logger.info(f"[SCHEDULER] No due calls to process (run_id={run_id})")
                 return
 
-            logger.info(f"[SCHEDULER] Processing {len(due_calls)} calls (run_id={run_id})")
+            logger.info(
+                f"[SCHEDULER] Processing {len(due_calls)} calls (run_id={run_id})"
+            )
 
             for scheduled_call in due_calls:
                 try:
@@ -268,7 +294,9 @@ class ScheduledCallsProcessor:
 
                     # Add to in-memory lock as additional safety
                     _processing_lock.add(call_id_str)
-                    logger.info(f"[SCHEDULER] Processing call {scheduled_call.id} (run_id={run_id})")
+                    logger.info(
+                        f"[SCHEDULER] Processing call {scheduled_call.id} (run_id={run_id})"
+                    )
 
                     is_retry = scheduled_call.retry_count > 0
 
@@ -325,8 +353,12 @@ class ScheduledCallsProcessor:
                     payload = self.build_payload(scheduled_call, driver, trip_id)
 
                     # Check if there's anything to say - either violations/reminders OR custom_rule
-                    has_violation_details = bool(payload["drivers"][0]["violations"]["violationDetails"])
-                    has_custom_rules = bool(payload["drivers"][0].get("customRules", "").strip())
+                    has_violation_details = bool(
+                        payload["drivers"][0]["violations"]["violationDetails"]
+                    )
+                    has_custom_rules = bool(
+                        payload["drivers"][0].get("customRules", "").strip()
+                    )
 
                     if not has_violation_details and not has_custom_rules:
                         logger.warning(
@@ -350,7 +382,7 @@ class ScheduledCallsProcessor:
                         extra_data={
                             "schedule_id": str(scheduled_call.id),
                             "phone": driver.phoneNumber,
-                        }
+                        },
                     )
 
                     # Trigger the call
@@ -367,7 +399,9 @@ class ScheduledCallsProcessor:
                             retry_count=scheduled_call.retry_count,
                             parent_call_sid=scheduled_call.parent_call_sid,
                             action="CALL_TRIGGERED",
-                            result="SUCCESS" if deleted else "SUCCESS_BUT_DELETE_FAILED",
+                            result=(
+                                "SUCCESS" if deleted else "SUCCESS_BUT_DELETE_FAILED"
+                            ),
                         )
 
                         if deleted:
@@ -404,14 +438,19 @@ class ScheduledCallsProcessor:
 
         except Exception as e:
             logger.error(
-                f"[SCHEDULER] Error in process_due_calls: {str(e)} (run_id={run_id})", exc_info=True
+                f"[SCHEDULER] Error in process_due_calls: {str(e)} (run_id={run_id})",
+                exc_info=True,
             )
         finally:
             # Clean up the processing lock for completed calls
             # Keep only entries that might still be processing
-            logger.info(f"[SCHEDULER] Cleaning up processing lock, current size: {len(_processing_lock)} (run_id={run_id})")
+            logger.info(
+                f"[SCHEDULER] Cleaning up processing lock, current size: {len(_processing_lock)} (run_id={run_id})"
+            )
 
-        logger.info(f"[SCHEDULER] Completed scheduled calls processing (run_id={run_id})")
+        logger.info(
+            f"[SCHEDULER] Completed scheduled calls processing (run_id={run_id})"
+        )
 
 
 # Singleton instance
