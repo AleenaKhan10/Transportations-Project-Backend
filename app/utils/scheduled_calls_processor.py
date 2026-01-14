@@ -181,7 +181,7 @@ class ScheduledCallsProcessor:
                     },
                 }
             ],
-            "call_source": scheduled_call.call_source,
+            "call_source": "Autopilot",
         }
 
         logger.info(
@@ -189,6 +189,10 @@ class ScheduledCallsProcessor:
             f"custom_rules: {custom_rules[:50] if custom_rules else 'None'}..., "
             f"retry_count: {scheduled_call.retry_count}, parent_call_sid: {scheduled_call.parent_call_sid}"
         )
+
+        print("======================================== Built Payload ==========")
+        print(payload)
+        print("========================================")
 
         return payload
 
@@ -209,6 +213,11 @@ class ScheduledCallsProcessor:
                 logger.info(
                     f"[SCHEDULER] Sending POST request for driver {driver_id} (run_id={run_id})"
                 )
+                print(
+                    "======================================== Trigger Call =========="
+                )
+                print(payload)
+                print("========================================")
                 response = await client.post(url, json=payload)
 
                 if response.status_code == 200:
@@ -384,6 +393,12 @@ class ScheduledCallsProcessor:
                             "phone": driver.phoneNumber,
                         },
                     )
+
+                    print(
+                        "======================================== PROCESS DUE CALLS =========="
+                    )
+                    print(payload)
+                    print("========================================")
 
                     # Trigger the call
                     success = await self.trigger_call(payload, run_id=run_id)
