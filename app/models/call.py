@@ -255,8 +255,7 @@ class Call(SQLModel, table=True):
                 violations_json=violations_json,
                 reminders_json=reminders_json,
                 custom_rules=custom_rules,
-                # phone_number=phone_number,
-                phone_number="(219) 200-2825",
+                phone_number=phone_number,
                 driver_name=driver_name,
                 # Retry tracking fields
                 retry_count=retry_count,

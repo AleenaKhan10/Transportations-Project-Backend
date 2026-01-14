@@ -181,7 +181,7 @@ class ScheduledCallsProcessor:
                     },
                 }
             ],
-            "call_source": "TEST",
+            "call_source": scheduled_call.call_source,
         }
 
         logger.info(
