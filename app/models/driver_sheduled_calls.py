@@ -20,6 +20,7 @@ class DriverSheduledCalls(SQLModel, table=True):
     reminder: Optional[str] = None
     violation: Optional[str] = None
     custom_rule: Optional[str] = None
+    call_source: Optional[str] = None
 
     call_scheduled_date_time: datetime
 
@@ -27,7 +28,9 @@ class DriverSheduledCalls(SQLModel, table=True):
 
     # Retry tracking
     retry_count: int = Field(default=0)  # 0 = first attempt, 1 = first retry, etc.
-    parent_call_sid: Optional[str] = Field(default=None)  # Original call's call_sid for retry chain
+    parent_call_sid: Optional[str] = Field(
+        default=None
+    )  # Original call's call_sid for retry chain
 
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
@@ -84,6 +87,7 @@ class DriverSheduledCalls(SQLModel, table=True):
                         status=False,  # False by default due to requirement
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),
+                        call_source="Mannual",
                     )
                     session.add(record)
                     new_records.append(record)
@@ -182,9 +186,7 @@ class DriverSheduledCalls(SQLModel, table=True):
             return False
 
         with cls.get_session() as session:
-            statement = select(cls).where(
-                cls.parent_call_sid == parent_call_sid
-            )
+            statement = select(cls).where(cls.parent_call_sid == parent_call_sid)
             result = session.exec(statement).first()
 
             if result:

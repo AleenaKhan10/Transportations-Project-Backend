@@ -94,6 +94,9 @@ class Call(SQLModel, table=True):
     )
     trip_id: Optional[str]
 
+    # call source
+    call_source: Optional[str] = None
+
     # Post-call webhook metadata fields
     transcript_summary: Optional[str] = Field(
         default=None,
@@ -210,6 +213,7 @@ class Call(SQLModel, table=True):
         retry_count: int = 0,
         max_retries: int = 3,
         parent_call_sid: Optional[str] = None,
+        call_source: Optional[str] = None,
     ) -> "Call":
         """
         Create a new Call record with call_sid (before calling ElevenLabs).
@@ -259,6 +263,7 @@ class Call(SQLModel, table=True):
                 retry_status=RetryStatus.none,
                 next_retry_at=None,
                 parent_call_sid=parent_call_sid,
+                call_source=call_source,
             )
             session.add(call)
             session.commit()
@@ -577,8 +582,7 @@ class Call(SQLModel, table=True):
 
         with cls.get_session() as session:
             stmt = select(cls).where(
-                cls.status == CallStatus.IN_PROGRESS,
-                cls.call_start_time < threshold
+                cls.status == CallStatus.IN_PROGRESS, cls.call_start_time < threshold
             )
             results = session.exec(stmt).all()
             return list(results)

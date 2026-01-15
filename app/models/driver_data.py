@@ -11,7 +11,11 @@ from models.driver_model_prompt import DriverPrompts
 from logic.auth.service import UserService, AuditService
 from logic.auth.security import get_current_active_user
 from models.user import User, UserUpdate
-from utils.call_logger import log_call_trigger, log_retry_schedule, log_duplicate_detected
+from utils.call_logger import (
+    log_call_trigger,
+    log_retry_schedule,
+    log_duplicate_detected,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1274,6 +1278,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 {
                     "callType": request.callType,
                     "timestamp": request.timestamp,
+                    "call_source": request.call_source,
                     "drivers": [
                         {
                             "driverId": d.driverId,
@@ -1397,7 +1402,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
             extra_data={
                 "driver_name": driver.driverName,
                 "phone": normalized_phone,
-            }
+            },
         )
 
         print("--------------------- CALL RECORD IS CREATING MAIN -------------------")
@@ -1446,6 +1451,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
                 retry_count=request.retry_count,
                 max_retries=3,
                 parent_call_sid=request.parent_call_sid,
+                call_source=request.call_source,
             )
             logger.info(
                 f"Call record created successfully - ID: {call_record.id}, call_sid: {call_sid}"
