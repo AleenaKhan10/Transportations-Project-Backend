@@ -23,9 +23,12 @@ async def process_scheduled_calls_job():
     """
     try:
         from utils.scheduled_calls_processor import scheduled_calls_processor
+
         await scheduled_calls_processor.process_due_calls()
     except Exception as e:
-        logger.error(f"[SCHEDULER] Error in scheduled calls job: {str(e)}", exc_info=True)
+        logger.error(
+            f"[SCHEDULER] Error in scheduled calls job: {str(e)}", exc_info=True
+        )
 
 
 async def process_in_progress_calls_job():
@@ -36,9 +39,12 @@ async def process_in_progress_calls_job():
     """
     try:
         from utils.in_progress_calls_processor import in_progress_calls_processor
+
         await in_progress_calls_processor.process_in_progress_calls()
     except Exception as e:
-        logger.error(f"[SCHEDULER] Error in in-progress calls job: {str(e)}", exc_info=True)
+        logger.error(
+            f"[SCHEDULER] Error in in-progress calls job: {str(e)}", exc_info=True
+        )
 
 
 def init_scheduler():
@@ -60,8 +66,8 @@ def init_scheduler():
         job_defaults={
             "coalesce": True,  # Combine multiple pending executions into one
             "max_instances": 1,  # Only one instance of each job running at a time
-            "misfire_grace_time": 60  # Allow 60 seconds grace period for missed jobs
-        }
+            "misfire_grace_time": 60,  # Allow 60 seconds grace period for missed jobs
+        },
     )
 
     # Add job to process scheduled calls every minute
@@ -70,7 +76,7 @@ def init_scheduler():
         trigger=IntervalTrigger(minutes=1),
         id="process_scheduled_calls",
         name="Process Scheduled Driver Calls",
-        replace_existing=True
+        replace_existing=True,
     )
 
     # Add job to process in-progress calls every minute
@@ -79,12 +85,14 @@ def init_scheduler():
         trigger=IntervalTrigger(minutes=1),
         id="process_in_progress_calls",
         name="Process In-Progress Calls (Finalize and Retry)",
-        replace_existing=True
+        replace_existing=True,
     )
 
     # Start the scheduler
     scheduler.start()
-    logger.info("[SCHEDULER] APScheduler started - processing scheduled calls and in-progress calls every minute")
+    logger.info(
+        "[SCHEDULER] APScheduler started - processing scheduled calls and in-progress calls every minute"
+    )
 
     return scheduler
 
