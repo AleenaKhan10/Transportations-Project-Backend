@@ -34,6 +34,7 @@ class ScheduledCallsProcessor:
 
     def __init__(self):
         self.api_base_url = settings.CLOUD_RUN_URL or "http://localhost:8000"
+        # self.api_base_url = "http://localhost:8000"
 
     def get_due_calls(self) -> List[DriverSheduledCalls]:
         """
@@ -360,9 +361,6 @@ class ScheduledCallsProcessor:
 
                     # Build payload with trip_id and custom_rules
                     payload = self.build_payload(scheduled_call, driver, trip_id)
-
-                    # ✅ add call_source before sending
-                    payload["call_source"] = scheduled_call.call_source
 
                     # Check if there's anything to say - either violations/reminders OR custom_rule
                     has_violation_details = bool(
