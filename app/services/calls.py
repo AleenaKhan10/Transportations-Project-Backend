@@ -177,7 +177,7 @@ async def list_calls(
                         # Call context fields
                         driver_name=call.driver_name,
                         phone_number=call.phone_number,
-                        call_source=call.call_source,
+                        call_source=call.call_source or "",
                     )
                 )
 
