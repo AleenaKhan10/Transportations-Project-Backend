@@ -62,6 +62,7 @@ class CallResponse(BaseModel):
     driver_name: Optional[str] = None
     phone_number: Optional[str] = None
     call_source: Optional[str] = None
+    violations_json: Optional[List[Violation]]
 
 
 class CallWithTranscriptResponse(BaseModel):
@@ -183,6 +184,7 @@ async def list_calls(
                         driver_name=call.driver_name,
                         phone_number=call.phone_number,
                         call_source=call.call_source or "",
+                        violations_json=call.violations_json,
                     )
                 )
 
