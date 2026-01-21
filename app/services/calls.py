@@ -184,7 +184,7 @@ async def list_calls(
                         driver_name=call.driver_name,
                         phone_number=call.phone_number,
                         call_source=call.call_source or "",
-                        violations_json=call.violations_json,
+                        violations_json=call.violations_json or [],
                     )
                 )
 
