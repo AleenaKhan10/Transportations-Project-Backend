@@ -30,6 +30,11 @@ class TranscriptMessage(BaseModel):
     sequence_number: int
 
 
+class Violation(BaseModel):
+    type: str
+    description: str
+
+
 class CallResponse(BaseModel):
     """Call response model."""
 
