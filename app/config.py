@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     ELEVENLABS_AGENT_PHONE_NUMBER_ID: str = ""
     ELEVENLABS_DISPATCHER_TRANSFER_NUMBER: str = "+923282828886"  # Hardcoded dispatcher transfer number
     ELEVENLABS_WEBHOOK_SECRET: str = ""
+    ELEVENLABS_MAINTENANCE_AGENT_ID: str = ""  # Maintenance Agent ID (from ElevenLabs console)
+
+    # OpenAI settings (for embeddings)
+    OPEN_AI_KEY: str = ""  # text-embedding-3-small for vector search
 
     # Email settings
     SMTP_SERVER: str = "smtp.gmail.com"
