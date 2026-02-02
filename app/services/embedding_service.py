@@ -130,8 +130,14 @@ def search_similar_cases(
     
     try:
         with Session(engine) as session:
+            # Debug: Check if any cases exist with embeddings
+            count_sql = text("SELECT COUNT(*) FROM dev.maintenance_cases WHERE embedding IS NOT NULL")
+            count_result = session.execute(count_sql).scalar()
+            logger.info(f"DEBUG: Cases with embeddings in DB: {count_result}")
+            
             # Build the SQL query for vector similarity search
             # Using cosine distance: 1 - (embedding <=> query) = similarity
+            # NOTE: Using CAST() instead of :: to avoid SQLAlchemy parameter conflict
             sql = text("""
                 SELECT 
                     id,
@@ -142,18 +148,22 @@ def search_similar_cases(
                     driver_id,
                     truck_id,
                     trailer_id,
-                    1 - (embedding <=> :query_embedding::vector) as similarity
+                    1 - (embedding <=> CAST(:query_embedding AS vector)) as similarity
                 FROM dev.maintenance_cases
                 WHERE embedding IS NOT NULL
                     AND (:category IS NULL OR category = :category)
-                ORDER BY embedding <=> :query_embedding::vector
+                ORDER BY embedding <=> CAST(:query_embedding AS vector)
                 LIMIT :limit
             """)
+            
+            # Format embedding as PostgreSQL array
+            embedding_str = f"[{','.join(map(str, query_embedding))}]"
+            logger.info(f"DEBUG: Embedding string length: {len(embedding_str)}")
             
             result = session.execute(
                 sql,
                 {
-                    "query_embedding": str(query_embedding),
+                    "query_embedding": embedding_str,
                     "category": category,
                     "limit": limit
                 }
@@ -161,11 +171,16 @@ def search_similar_cases(
             
             # Format results
             cases = []
-            for row in result:
+            all_rows = list(result)
+            logger.info(f"DEBUG: Raw rows returned: {len(all_rows)}")
+            
+            for row in all_rows:
                 similarity = float(row.similarity) if row.similarity else 0
+                logger.info(f"DEBUG: Case {row.id} similarity: {similarity}")
                 
-                # Filter by minimum similarity
+                # Filter by minimum similarity (lowered to 0.3 for debugging)
                 if similarity < min_similarity:
+                    logger.info(f"DEBUG: Skipping case {row.id} - similarity {similarity} < {min_similarity}")
                     continue
                     
                 cases.append({
@@ -185,6 +200,8 @@ def search_similar_cases(
             
     except Exception as e:
         logger.error(f"Error searching similar cases: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return []
 
 
