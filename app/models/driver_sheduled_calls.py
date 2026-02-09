@@ -61,6 +61,10 @@ class DriverSheduledCalls(SQLModel, table=True):
         """
         Now this function will treat 'drivers' list as generic strings.
         """
+
+        print("MODEL FUNCTION CALLED")
+        print(payload.dispatchCallPreference)
+
         # 1. Generate unique Group ID
         group_id = uuid.uuid4()
 
@@ -78,23 +82,35 @@ class DriverSheduledCalls(SQLModel, table=True):
 
         try:
             with cls.get_session() as session:
-                # 3. Loop through the array of strings (Selected Checkbox values)
-                for driver_input_string in payload.drivers:
 
-                    # Har string (checkbox selection) k liye aik row
+                # 3. Loop through drivers
+                for idx, driver_name in enumerate(payload.drivers):
+                    # Map dispatchCallPreference per driver
+                    dispatch_pref = "Off"  # default
+                    if payload.dispatchCallPreference:
+                        if idx < len(payload.dispatchCallPreference):
+                            dispatch_pref = payload.dispatchCallPreference[idx]
+                        elif len(payload.dispatchCallPreference) == 1:
+                            dispatch_pref = payload.dispatchCallPreference[0]
+
+                    print(
+                        f"Mapping driver '{driver_name}' -> dispatchPref={dispatch_pref}"
+                    )
+
                     record = cls(
                         schedule_group_id=group_id,
-                        driver=driver_input_string,  #
+                        driver=driver_name,
                         reminder=reminders_str,
                         violation=violations_str,
-                        dispatchCallPreference=dispatch_call_preference_str,
+                        dispatchCallPreference=dispatch_pref,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
                         custom_rule=payload.custom_rule,
-                        status=False,  # False by default due to requirement
+                        status=False,
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow(),
-                        call_source="Mannual",
+                        call_source="Manual",
                     )
+
                     session.add(record)
                     new_records.append(record)
 

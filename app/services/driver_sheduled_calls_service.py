@@ -59,6 +59,7 @@ class ScheduleCreateRequest(BaseModel):
     drivers: List[str]
     reminders: List[str]
     violations: List[str]
+    dispatchCallPreference: List[str]
     custom_rule: str
 
 
@@ -143,6 +144,8 @@ def get_schedule_by_id_or_group(query_id: uuid.UUID):
 # --------------------------------------------------------
 @router.post("/", status_code=201)
 def create_driver_schedule(payload: ScheduleCreateRequest):
+    print("SERVICE---------")
+
     try:
         result = DriverSheduledCalls.create_bulk_schedule(payload)
         return result
