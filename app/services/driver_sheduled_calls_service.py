@@ -59,7 +59,7 @@ class ScheduleCreateRequest(BaseModel):
     drivers: List[str]
     reminders: List[str]
     violations: List[str]
-    dispatchCallPreference: List[str]
+    # dispatchCallPreference: List[str]
     custom_rule: str
 
 
