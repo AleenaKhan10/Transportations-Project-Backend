@@ -21,7 +21,7 @@ class DriverSheduledCalls(SQLModel, table=True):
     violation: Optional[str] = None
     custom_rule: Optional[str] = None
     call_source: Optional[str] = None
-    dispatchCallPreference: Optional[str] = None
+    # dispatchCallPreference: Optional[str] = None
 
     call_scheduled_date_time: datetime
 
