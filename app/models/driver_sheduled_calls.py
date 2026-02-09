@@ -67,10 +67,14 @@ class DriverSheduledCalls(SQLModel, table=True):
         # 2. Process Reminders/Violations lists to String
         reminders_str = ", ".join(payload.reminders) if payload.reminders else None
         violations_str = ", ".join(payload.violations) if payload.violations else None
+        dispatch_call_preference_str = (
+            ", ".join(payload.dispatchCallPreference) if payload.violations else None
+        )
 
         new_records = []
-        print("paylaod")
+        print("paylaod----------------------------")
         print(payload)
+        print("paylaod-----------------------------")
 
         try:
             with cls.get_session() as session:
@@ -83,6 +87,7 @@ class DriverSheduledCalls(SQLModel, table=True):
                         driver=driver_input_string,  #
                         reminder=reminders_str,
                         violation=violations_str,
+                        dispatchCallPreference=dispatch_call_preference_str,
                         call_scheduled_date_time=payload.call_scheduled_date_time,
                         custom_rule=payload.custom_rule,
                         status=False,  # False by default due to requirement
