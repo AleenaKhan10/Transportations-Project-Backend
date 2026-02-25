@@ -4,6 +4,7 @@ from db import engine
 import logging
 from utils.vapi_client import vapi_client
 from models.vapi import BatchCallRequest
+from models.drivers import Driver
 from config import settings
 import httpx
 from fastapi import HTTPException, Depends
@@ -472,15 +473,15 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
     set_point = trip_data.get("ditat_set_point")
     current_temp = trip_data.get("current_temp_f")
 
-    if set_point is None or current_temp is None:
-        return None  # Skip if no data
-
-    # Skip if temperatures are equal
-    if int(set_point) == int(current_temp):
-        return None
-
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("temperature_not_equal")
+
+    # If data is missing or temps are equal, use condition_false_prompt
+    if set_point is None or current_temp is None or int(set_point) == int(current_temp):
+        if prompt_record and prompt_record.condition_false_prompt:
+            return prompt_record.condition_false_prompt
+        return "Can you confirm your reefer set point for this load?"
+
     if not prompt_record:
         logger.warning(
             "temperature_not_equal prompt not found in database, using fallback"
@@ -491,7 +492,7 @@ def build_temperature_violation_prompt(trip_data: Dict) -> str:
         else:
             return f"Temp is running cold at {int(current_temp)} degrees Fahrenheit, needs to be {int(set_point)} degrees Fahrenheit. Can you adjust it?"
 
-    # Use prompt from database
+    # Use prompt from database with actual values
     if current_temp > set_point:
         template = prompt_record.condition_true_prompt
     else:
@@ -550,15 +551,15 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
     fuel = trip_data.get("fuel_percent")
     required = REQUIRED_FUEL
 
-    if fuel is None:
-        return None  # Skip if no data
-
-    # Skip if fuel is at or above required level
-    if fuel >= required:
-        return None
-
     # Fetch prompt from database
     prompt_record = get_prompt_from_db("fuel_lower_than_required")
+
+    # If data is missing or fuel is at/above required level, use condition_false_prompt
+    if fuel is None or fuel >= required:
+        if prompt_record and prompt_record.condition_false_prompt:
+            return prompt_record.condition_false_prompt
+        return "What's your current fuel level looking like?"
+
     if not prompt_record:
         logger.warning(
             "fuel_lower_than_required prompt not found in database, using fallback"
@@ -566,7 +567,7 @@ def build_fuel_violation_prompt(trip_data: Dict) -> str:
         # Fallback to hardcoded prompt if DB fetch fails
         return f"Your fuel is at {int(fuel)}%. What's your refueling plan?"
 
-    # Use prompt from database (only condition_true_prompt is used for fuel violation)
+    # Use prompt from database with actual values
     template = prompt_record.condition_true_prompt
     return template.format(fuel_percent=int(fuel))
 
@@ -710,6 +711,7 @@ def generate_enhanced_conversational_prompt(
     reminders: List = None,
     trip_data: Dict = None,
     custom_rules: str = None,
+    language: str = "English",
 ) -> str:
     """
     Generate a complete conversational prompt with system instructions and trigger points.
@@ -816,6 +818,11 @@ def generate_enhanced_conversational_prompt(
         "=== DRIVER INFORMATION ===",
         f"Driver Name: {driver_name}",
         f"First Name: {first_name}",
+        f"Preferred Language: {language}",
+        "",
+        "=== LANGUAGE INSTRUCTION ===",
+        f"The driver's preferred language is {language}. You MUST conduct the ENTIRE conversation in {language}.",
+        f"Greet, ask questions, and respond ONLY in {language}. Do not switch to English unless the driver speaks English to you first.",
         "",
         "=== POINTS TO DISCUSS (ONE AT A TIME) ===",
     ]
@@ -1339,6 +1346,10 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
             trip_id=trip_id or "", driver_id=driver.driverId
         )
 
+        # Fetch driver's preferred language
+        driver_record = Driver.get_by_id(driver.driverId)
+        driver_language = driver_record.firstLanguage if driver_record and driver_record.firstLanguage else "English"
+
         # Convert violations to format expected by prompt generation function
         violation_details = []
         if driver.violations and driver.violations.violationDetails:
@@ -1358,6 +1369,7 @@ async def make_drivers_violation_batch_call_elevenlabs(request: BatchCallRequest
             reminders=[],
             trip_data=trip_data,
             custom_rules=driver.customRules,
+            language=driver_language,
         )
 
         logger.info(
