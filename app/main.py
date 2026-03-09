@@ -53,6 +53,7 @@ from services.calls import router as calls_router
 from services.websocket_calls import router as websocket_calls_router
 from services.maintenance_tickets import router as maintenance_tickets_router
 from services.maintenance_cases_service import router as maintenance_cases_router
+from services.driver_location_service import router as driver_location_router
 
 
 # driver sheduled calls router
@@ -195,6 +196,7 @@ app.include_router(page_access_token)
 app.include_router(driver_prompt_router)
 app.include_router(department_rules_router)
 app.include_router(autopilot_selection_router)
+app.include_router(driver_location_router)
 
 # ElevenLabs webhooks and call management
 app.include_router(webhooks_elevenlabs_router)
